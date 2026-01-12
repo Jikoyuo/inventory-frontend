@@ -86,6 +86,23 @@ interface ProdFormData {
   attributes: { key: string; value: string }[];
 }
 
+interface DashboardStats {
+  total_products: number;
+  low_stock_count: number;
+  total_valuation: number;
+}
+
+interface StockMovementData {
+  date: string;
+  inbound: number;
+  outbound: number;
+}
+
+interface StockMovementResponse {
+  period: number;
+  data: StockMovementData[];
+}
+
 const API_URL = "http://localhost:8080/api/v1";
 const WS_URL = "ws://localhost:8080/ws";
 
@@ -259,6 +276,11 @@ export default function App() {
     unit: string;
     price: number;
   }>({ name: '', sku: '', stock: 0, unit: 'pcs', price: 0 });
+
+  // Dashboard Stats State
+  const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
+  const [stockMovement, setStockMovement] = useState<StockMovementData[]>([]);
+  const [selectedPeriod, setSelectedPeriod] = useState<number>(7);
 
   // Calculate unread notifications count
   const unreadCount = notifications.filter(n => !n.read).length;
