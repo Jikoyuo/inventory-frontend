@@ -7,7 +7,7 @@ interface HeartbeatManagerProps {
     intervalSeconds?: number;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1";
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export const HeartbeatManager: React.FC<HeartbeatManagerProps> = ({ intervalSeconds = 60 }) => {
     const accessToken = useAppSelector((state) => state.auth.accessToken);

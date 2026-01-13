@@ -125,8 +125,8 @@ interface Transaction {
   created_at: string;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1";
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8080/ws";
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
+const WS_URL = process.env.NEXT_PUBLIC_WS_URL;
 
 // Helper function to format time ago
 const formatTimeAgo = (date: Date): string => {
@@ -506,6 +506,7 @@ export default function App() {
     let reconnectTimeout: NodeJS.Timeout;
 
     const connectWebSocket = () => {
+      if (!WS_URL) return;
       ws = new WebSocket(WS_URL);
 
       ws.onopen = () => {
