@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 
-const API_URL = "http://localhost:8080/api/v1";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1";
 
 export default function ResetPasswordPage() {
     // Step management: 'request' | 'verify' | 'reset' | 'success'
@@ -186,8 +186,8 @@ export default function ResetPasswordPage() {
                             {['request', 'verify', 'reset'].map((s, i) => (
                                 <React.Fragment key={s}>
                                     <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-colors ${step === s ? 'bg-teal-500 text-white' :
-                                            ['request', 'verify', 'reset'].indexOf(step) > i ? 'bg-teal-500/20 text-teal-400' :
-                                                'bg-slate-700 text-slate-500'
+                                        ['request', 'verify', 'reset'].indexOf(step) > i ? 'bg-teal-500/20 text-teal-400' :
+                                            'bg-slate-700 text-slate-500'
                                         }`}>
                                         {i + 1}
                                     </div>
