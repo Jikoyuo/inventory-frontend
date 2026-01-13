@@ -541,6 +541,9 @@ export default function App() {
           let quantity = data.stock || data.quantity;
 
           switch (eventType) {
+            case 'user_status_update':
+            case 'HEARTBEAT':
+              return;
             case 'PRODUCT_CREATED':
               message = `New product "${productName}" created with ${quantity} stock`;
               notifType = 'info';
@@ -599,8 +602,13 @@ export default function App() {
             type: 'success'
           });
 
-          // Refresh products
-          fetchProducts();
+          // Refresh data based on privileges
+          if (hasPrivilege('product:view')) fetchProducts();
+          if (hasPrivilege('dashboard:view')) {
+            fetchDashboardStats();
+            fetchStockMovement(selectedPeriod);
+          }
+          if (hasPrivilege('transaction:view')) fetchTransactions();
         } catch (error) {
           console.error('Failed to parse WebSocket message:', error);
         }
