@@ -17,9 +17,13 @@ import {
   ChevronRight,
   Wallet,
   Edit,
-  LucideIcon
+  Users,
+  LogOut,
+  LucideIcon,
+  History
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useAppSelector } from '../store/hooks';
 
 // --- TYPE DEFINITIONS ---
 interface Product {
@@ -70,6 +74,9 @@ interface Notification {
   productName?: string;
   changeType?: 'IN' | 'OUT';
   quantity?: number;
+  userName?: string;
+  userEmail?: string;
+  action?: string;
 }
 
 interface TxFormData {
@@ -101,6 +108,21 @@ interface StockMovementData {
 interface StockMovementResponse {
   period: number;
   data: StockMovementData[];
+}
+
+interface Transaction {
+  id: string;
+  product_id: string;
+  product: Product;
+  type: 'IN' | 'OUT';
+  quantity: number;
+  note: string;
+  created_by_user: {
+    id: string;
+    email: string;
+    full_name: string;
+  };
+  created_at: string;
 }
 
 const API_URL = "http://localhost:8080/api/v1";
@@ -247,8 +269,17 @@ const Toast: React.FC<ToastProps> = ({ message, type, onClose }) => {
 
 export default function App() {
   const [loading, setLoading] = useState<boolean>(true);
+  const [isValidating, setIsValidating] = useState<boolean>(true);
   const [products, setProducts] = useState<Product[]>([]);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'inventory'>('dashboard');
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const accessToken = useAppSelector((state) => state.auth.accessToken);
+  const user = useAppSelector((state) => state.auth.user);
+  const privileges = useAppSelector((state) => state.auth.privileges);
+
+  // RBAC Helper
+  const hasPrivilege = (permission: string) => privileges.includes(permission);
+
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'inventory' | 'transactions'>('dashboard');
   const [isTxModalOpen, setIsTxModalOpen] = useState<boolean>(false);
   const [isProductModalOpen, setIsProductModalOpen] = useState<boolean>(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
@@ -276,6 +307,11 @@ export default function App() {
     unit: string;
     price: number;
   }>({ name: '', sku: '', stock: 0, unit: 'pcs', price: 0 });
+
+  // Loading States for Actions
+  const [isSubmittingTx, setIsSubmittingTx] = useState<boolean>(false);
+  const [isSubmittingProd, setIsSubmittingProd] = useState<boolean>(false);
+  const [isSubmittingEdit, setIsSubmittingEdit] = useState<boolean>(false);
 
   // Dashboard Stats State
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
@@ -305,7 +341,12 @@ export default function App() {
   // Mock Fetch & WS Logic
   const fetchProducts = async (): Promise<void> => {
     try {
-      const res = await fetch(`${API_URL}/products`);
+      const res = await fetch(`${API_URL}/products`, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
       if (!res.ok) throw new Error('Failed to fetch');
       const data: Product[] = await res.json();
       setProducts(data);
@@ -319,11 +360,147 @@ export default function App() {
     }
   };
 
+  // Fetch Dashboard Stats
+  const fetchDashboardStats = async (): Promise<void> => {
+    try {
+      const res = await fetch(`${API_URL}/dashboard/stats`, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      if (!res.ok) throw new Error('Failed to fetch stats');
+      const data: DashboardStats = await res.json();
+      setDashboardStats(data);
+    } catch {
+      console.log("Using Mock Dashboard Stats");
+      setDashboardStats({
+        total_products: products.length,
+        low_stock_count: products.filter(p => p.stock < 5).length,
+        total_valuation: 15000000
+      });
+    }
+  };
+
+  // Fetch Transactions
+  const fetchTransactions = async (): Promise<void> => {
+    try {
+      const res = await fetch(`${API_URL}/transactions`, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      if (!res.ok) throw new Error('Failed to fetch transactions');
+      const data: Transaction[] = await res.json();
+      setTransactions(data);
+    } catch {
+      console.log("Using Mock Transaction Data");
+      setTransactions([]);
+    }
+  };
+
+  // Fetch Stock Movement
+  const fetchStockMovement = async (period: number = 7): Promise<void> => {
+    try {
+      const res = await fetch(`${API_URL}/dashboard/stock-movement?period=${period}`, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      if (!res.ok) throw new Error('Failed to fetch stock movement');
+      const data: StockMovementResponse = await res.json();
+      setStockMovement(data.data || []);
+      setSelectedPeriod(data.period || period);
+    } catch {
+      console.log("Using Mock Stock Movement Data");
+      // Generate mock data for the selected period
+      const mockData: StockMovementData[] = [];
+      const today = new Date();
+      for (let i = period - 1; i >= 0; i--) {
+        const date = new Date(today);
+        date.setDate(date.getDate() - i);
+        mockData.push({
+          date: date.toISOString().split('T')[0],
+          inbound: Math.floor(Math.random() * 80) + 10,
+          outbound: Math.floor(Math.random() * 60) + 5
+        });
+      }
+      setStockMovement(mockData);
+    }
+  };
+
   // WebSocket Connection
   useEffect(() => {
-    if (loading) return;
+    // Auth validation on mount
+    const validateAuth = async () => {
+      try {
+        const token = localStorage.getItem('accessToken');
 
-    fetchProducts();
+        if (!token) {
+          // No token, redirect to login
+          window.location.href = '/login';
+          return;
+        }
+
+        // Validate token with backend
+        const res = await fetch(`${API_URL}/auth/validate-token`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token })
+        });
+
+        if (!res.ok) {
+          // Token invalid, clear and redirect
+          localStorage.removeItem('accessToken');
+          const { logout } = await import('../store/slices/authSlice');
+          const { store } = await import('../store');
+          store.dispatch(logout());
+          window.location.href = '/login';
+          return;
+        }
+
+        const data = await res.json();
+
+        // Update Redux with fresh data
+        const { setCredentials } = await import('../store/slices/authSlice');
+        const { store } = await import('../store');
+        store.dispatch(setCredentials({
+          token,
+          privileges: data.privileges || [],
+          user: {
+            id: data.user?.id || '',
+            name: data.user?.full_name || '',
+            email: data.user?.email || '',
+            role: data.role?.name || data.user?.role?.name || 'User',
+            roleCode: data.role?.code || data.user?.role?.code || ''
+          }
+        }));
+
+        // Token valid, proceed
+        setIsValidating(false);
+      } catch (err) {
+        console.error('Auth validation error:', err);
+        localStorage.removeItem('accessToken');
+        window.location.href = '/login';
+      }
+    };
+
+    validateAuth();
+  }, []);
+
+  useEffect(() => {
+    if (loading || isValidating) return;
+
+    if (!hasPrivilege('product:view') && !hasPrivilege('dashboard:view') && !hasPrivilege('transaction:view')) return;
+
+    if (hasPrivilege('product:view')) fetchProducts();
+    if (hasPrivilege('transaction:view')) fetchTransactions();
+    if (hasPrivilege('dashboard:view')) {
+      fetchDashboardStats();
+      fetchStockMovement(selectedPeriod);
+    }
 
     let ws: WebSocket | null = null;
     let reconnectTimeout: NodeJS.Timeout;
@@ -392,6 +569,11 @@ export default function App() {
               console.log('Unknown event type:', eventType);
           }
 
+          // Extract user info from WebSocket data
+          const userName = data.user?.name || data.user?.full_name || 'System';
+          const userEmail = data.user?.email || '';
+          const action = data.action || eventType;
+
           // Create notification
           const newNotification: Notification = {
             id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -401,7 +583,10 @@ export default function App() {
             read: false,
             productName,
             changeType,
-            quantity
+            quantity,
+            userName,
+            userEmail,
+            action
           };
 
           // Add to notifications (max 50)
@@ -433,32 +618,49 @@ export default function App() {
   // Handlers (Keeping logic same as before)
   const handleTxSubmit = async (e: FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault();
+    if (isSubmittingTx) return;
+    setIsSubmittingTx(true);
     try {
       const payload = { ...txForm, quantity: parseInt(String(txForm.quantity)) };
       const res = await fetch(`${API_URL}/transactions`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
       });
       if (!res.ok) throw new Error('Transaction failed');
       setToast({ message: 'Transaction recorded!', type: 'success' });
       setIsTxModalOpen(false);
       fetchProducts();
+      fetchTransactions();
     } catch (err) { setToast({ message: err instanceof Error ? err.message : 'Unknown error', type: 'error' }); }
+    finally { setIsSubmittingTx(false); }
   };
 
   const handleProdSubmit = async (e: FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault();
+    if (isSubmittingProd) return;
+    setIsSubmittingProd(true);
     const attrObj: Record<string, string> = {};
     prodForm.attributes.forEach(a => { if (a.key) attrObj[a.key] = a.value; });
     try {
       const payload = { name: prodForm.name, sku: prodForm.sku, stock: parseInt(String(prodForm.stock)), attributes: attrObj };
       const res = await fetch(`${API_URL}/products`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
       });
       if (!res.ok) throw new Error('Failed to create');
       setToast({ message: 'Product created!', type: 'success' });
       setIsProductModalOpen(false);
       fetchProducts();
     } catch (err) { setToast({ message: err instanceof Error ? err.message : 'Unknown error', type: 'error' }); }
+    finally { setIsSubmittingProd(false); }
   };
 
   // Open Edit Modal
@@ -477,7 +679,8 @@ export default function App() {
   // Handle Edit Submit
   const handleEditSubmit = async (e: FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault();
-    if (!editingProduct) return;
+    if (!editingProduct || isSubmittingEdit) return;
+    setIsSubmittingEdit(true);
 
     try {
       const payload = {
@@ -489,7 +692,10 @@ export default function App() {
       };
       const res = await fetch(`${API_URL}/products/${editingProduct.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
         body: JSON.stringify(payload)
       });
       if (!res.ok) throw new Error('Failed to update product');
@@ -499,6 +705,8 @@ export default function App() {
       fetchProducts();
     } catch (err) {
       setToast({ message: err instanceof Error ? err.message : 'Unknown error', type: 'error' });
+    } finally {
+      setIsSubmittingEdit(false);
     }
   };
 
@@ -506,7 +714,47 @@ export default function App() {
     setTimeout(() => setLoading(false), 500);
   };
 
+  // Handle Logout
+  const handleLogout = async () => {
+    try {
+      // Clear localStorage
+      localStorage.removeItem('accessToken');
+
+      // Clear Redux state
+      const { logout } = await import('../store/slices/authSlice');
+      const { store } = await import('../store');
+      store.dispatch(logout());
+
+      // Redirect to login
+      window.location.href = '/login';
+    } catch (err) {
+      console.error('Logout error:', err);
+      // Force redirect even if error
+      window.location.href = '/login';
+    }
+  };
+
   // --- RENDER ---
+
+  // Show loading while validating auth
+  if (isValidating) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="flex flex-col items-center"
+        >
+          <div className="relative">
+            <div className="absolute inset-0 bg-teal-500/20 blur-3xl rounded-full" />
+            <Box className="w-16 h-16 text-teal-400 animate-pulse relative z-10" strokeWidth={2} />
+          </div>
+          <h3 className="mt-6 text-xl font-bold text-white">Validating session...</h3>
+          <p className="mt-2 text-sm text-slate-400">Please wait</p>
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 selection:bg-teal-100 selection:text-teal-900">
@@ -540,39 +788,62 @@ export default function App() {
 
               <nav className="space-y-2">
                 {[
-                  { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-                  { id: 'inventory', icon: Package, label: 'Inventory' },
-                ].map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => { setActiveTab(item.id as 'dashboard' | 'inventory'); setIsMobileMenuOpen(false); }}
-                    className={`
+                  { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard', permission: 'dashboard:view' },
+                  { id: 'inventory', icon: Package, label: 'Inventory', permission: 'product:view' },
+                  { id: 'transactions', icon: History, label: 'Transactions', permission: 'transaction:view' },
+                ]
+                  .filter(item => hasPrivilege(item.permission))
+                  .map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={() => { setActiveTab(item.id as 'dashboard' | 'inventory' | 'transactions'); setIsMobileMenuOpen(false); }}
+                      className={`
                       w-full flex items-center justify-between px-4 py-3.5 rounded-xl text-sm font-medium transition-all duration-200 group
                       ${activeTab === item.id
-                        ? 'bg-gradient-to-r from-teal-500 to-cyan-500 text-white shadow-md shadow-teal-500/20'
-                        : 'text-slate-500 hover:bg-slate-50 hover:text-teal-600'}
+                          ? 'bg-gradient-to-r from-teal-500 to-cyan-500 text-white shadow-md shadow-teal-500/20'
+                          : 'text-slate-500 hover:bg-slate-50 hover:text-teal-600'}
                     `}
-                  >
-                    <div className="flex items-center gap-3">
-                      <item.icon size={20} className={activeTab === item.id ? 'text-teal-100' : 'text-slate-400 group-hover:text-teal-500'} />
-                      {item.label}
-                    </div>
-                    {activeTab === item.id && <ChevronRight size={16} className="text-teal-100 opacity-80" />}
-                  </button>
-                ))}
+                    >
+                      <div className="flex items-center gap-3">
+                        <item.icon size={20} className={activeTab === item.id ? 'text-teal-100' : 'text-slate-400 group-hover:text-teal-500'} />
+                        {item.label}
+                      </div>
+                      {activeTab === item.id && <ChevronRight size={16} className="text-teal-100 opacity-80" />}
+                    </button>
+                  ))}
+
+                {/* User Management Link */}
+                <a
+                  href="/users"
+                  onClick={(e) => { e.preventDefault(); window.location.href = '/users'; }}
+                  className="w-full flex items-center justify-between px-4 py-3.5 rounded-xl text-sm font-medium transition-all duration-200 group text-slate-500 hover:bg-slate-50 hover:text-teal-600"
+                >
+                  <div className="flex items-center gap-3">
+                    <Users size={20} className="text-slate-400 group-hover:text-teal-500" />
+                    User Management
+                  </div>
+                  <ChevronRight size={16} className="text-slate-400 group-hover:text-teal-500 opacity-0 group-hover:opacity-100" />
+                </a>
               </nav>
             </div>
 
             <div className="mt-auto p-6 m-4 bg-slate-50 rounded-2xl border border-slate-100">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 mb-4">
                 <div className="w-10 h-10 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 font-bold border-2 border-white shadow-sm">
-                  AP
+                  {user?.name?.[0]?.toUpperCase() || 'U'}
                 </div>
                 <div>
-                  <p className="text-sm font-bold text-slate-800">Admin Prabs</p>
-                  <p className="text-xs text-slate-500">Warehouse Mgr</p>
+                  <p className="text-sm font-bold text-slate-800">{user?.name || 'User'}</p>
+                  <p className="text-xs text-slate-500">{user?.role || 'Role'}</p>
                 </div>
               </div>
+              <button
+                onClick={handleLogout}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl text-sm font-semibold transition-all hover:shadow-sm"
+              >
+                <LogOut size={16} />
+                Logout
+              </button>
             </div>
           </aside>
 
@@ -588,7 +859,7 @@ export default function App() {
                   <Menu size={24} />
                 </button>
                 <h2 className="text-xl md:text-2xl font-bold text-slate-800">
-                  {activeTab === 'dashboard' ? 'Overview' : 'Warehouse Inventory'}
+                  {activeTab === 'dashboard' ? 'Overview' : activeTab === 'inventory' ? 'Warehouse Inventory' : 'Transaction History'}
                 </h2>
               </div>
 
@@ -596,7 +867,7 @@ export default function App() {
                 {/* WebSocket Status Indicator */}
                 <div className={`hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium ${wsConnected ? 'bg-teal-50 text-teal-600' : 'bg-slate-100 text-slate-400'}`}>
                   <span className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-teal-500 animate-pulse' : 'bg-slate-400'}`}></span>
-                  {wsConnected ? 'Live' : 'Offline'}
+                  {wsConnected ? 'Online' : 'Offline'}
                 </div>
 
                 {/* Notification Bell with Dropdown */}
@@ -738,17 +1009,22 @@ export default function App() {
                   </AnimatePresence>
                 </div>
 
-                <button
-                  onClick={() => setIsTxModalOpen(true)}
-                  className="hidden md:flex bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition-all items-center gap-2 shadow-lg shadow-slate-900/20 hover:shadow-xl hover:-translate-y-0.5"
-                >
-                  <ArrowRightLeft size={18} />
-                  Transaction
-                </button>
-                {/* Mobile Floating Button Replacement */}
-                <button onClick={() => setIsTxModalOpen(true)} className="md:hidden bg-slate-900 text-white p-3 rounded-full shadow-lg">
-                  <ArrowRightLeft size={20} />
-                </button>
+                {/* New buttons with RBAC */}
+                <div className="flex gap-3">
+                  {hasPrivilege('transaction:create') && (
+                    <button onClick={() => setIsTxModalOpen(true)} className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-4 py-2.5 rounded-xl font-medium transition-all shadow-lg shadow-slate-900/10">
+                      <ArrowRightLeft size={18} />
+                      <span className="hidden sm:inline">Transaction</span>
+                    </button>
+                  )}
+
+                  {hasPrivilege('product:create') && (
+                    <button onClick={() => setIsProductModalOpen(true)} className="flex items-center gap-2 bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-400 hover:to-cyan-400 text-white px-4 py-2.5 rounded-xl font-medium transition-all shadow-lg shadow-teal-500/25">
+                      <Plus size={20} />
+                      <span className="hidden sm:inline">Add Product</span>
+                    </button>
+                  )}
+                </div>
               </div>
             </header>
 
@@ -759,31 +1035,31 @@ export default function App() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <StatCard
                       title="Total Products"
-                      value={products.length}
+                      value={dashboardStats?.total_products ?? products.length}
                       icon={Package}
-                      trend="+12.5%"
+                      trend={`${dashboardStats?.total_products ?? products.length} items`}
                       trendUp={true}
                       delay={0.1}
                     />
                     <StatCard
                       title="Low Stock Alert"
-                      value={products.filter(p => p.stock < 5).length}
+                      value={dashboardStats?.low_stock_count ?? products.filter(p => p.stock < 5).length}
                       icon={AlertTriangle}
-                      trend="+2 items"
-                      trendUp={false} // means bad trend (increase in low stock)
+                      trend={`${dashboardStats?.low_stock_count ?? 0} items need restock`}
+                      trendUp={false}
                       delay={0.2}
                     />
                     <StatCard
                       title="Est. Valuation"
-                      value="IDR 45M"
+                      value={`IDR ${((dashboardStats?.total_valuation ?? 0) / 1000000).toFixed(1)}M`}
                       icon={Wallet}
-                      trend="+5.2%"
+                      trend="Total inventory value"
                       trendUp={true}
                       delay={0.3}
                     />
                   </div>
 
-                  {/* Visual Chart Placeholder */}
+                  {/* Stock Movement Chart */}
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -795,36 +1071,105 @@ export default function App() {
                         <h3 className="text-lg font-bold text-slate-800">Stock Movement</h3>
                         <p className="text-sm text-slate-500">Inbound vs Outbound Analysis</p>
                       </div>
-                      <select className="bg-slate-50 border border-slate-200 text-sm rounded-lg px-3 py-2 text-slate-600 outline-none focus:ring-2 focus:ring-teal-500/20">
-                        <option>Last 7 Days</option>
-                        <option>Last 30 Days</option>
+                      <select
+                        className="bg-slate-50 border border-slate-200 text-sm rounded-lg px-3 py-2 text-slate-600 outline-none focus:ring-2 focus:ring-teal-500/20"
+                        value={selectedPeriod}
+                        onChange={(e) => fetchStockMovement(parseInt(e.target.value))}
+                      >
+                        <option value={7}>Last 7 Days</option>
+                        <option value={14}>Last 14 Days</option>
+                        <option value={30}>Last 30 Days</option>
                       </select>
                     </div>
 
-                    {/* Fake Chart Visualization */}
-                    <div className="h-64 flex items-end justify-between gap-2 md:gap-4 px-2">
-                      {[40, 65, 30, 80, 55, 90, 45, 60, 75, 50, 85, 60].map((h, i) => (
-                        <div key={i} className="w-full bg-slate-100 rounded-t-lg relative group overflow-hidden">
-                          <motion.div
-                            initial={{ height: 0 }}
-                            animate={{ height: `${h}%` }}
-                            transition={{ duration: 1, delay: i * 0.05 }}
-                            className="absolute bottom-0 w-full bg-teal-500 opacity-20 group-hover:opacity-40 transition-opacity"
-                          />
-                          <motion.div
-                            initial={{ height: 0 }}
-                            animate={{ height: `${h * 0.6}%` }}
-                            transition={{ duration: 1, delay: i * 0.05 + 0.2 }}
-                            className="absolute bottom-0 w-full bg-gradient-to-t from-teal-600 to-cyan-400 rounded-t-sm group-hover:from-teal-500 group-hover:to-cyan-300 transition-colors"
-                          />
+                    {/* Legend */}
+                    <div className="flex gap-6 mb-6">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full bg-teal-500"></div>
+                        <span className="text-xs font-medium text-slate-600">Inbound</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full bg-rose-400"></div>
+                        <span className="text-xs font-medium text-slate-600">Outbound</span>
+                      </div>
+                    </div>
+
+                    {/* Chart Visualization */}
+                    {stockMovement.length > 0 ? (
+                      <>
+                        <div className="h-64 flex items-end justify-between gap-1 md:gap-2 px-2">
+                          {stockMovement.map((day, i) => {
+                            const maxValue = Math.max(...stockMovement.flatMap(d => [d.inbound, d.outbound]), 1);
+                            const inboundHeight = (day.inbound / maxValue) * 100;
+                            const outboundHeight = (day.outbound / maxValue) * 100;
+
+                            return (
+                              <div key={i} className="flex-1 flex gap-0.5 items-end h-full group relative">
+                                {/* Tooltip */}
+                                <div className="absolute -top-16 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-xs px-3 py-2 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity z-10 whitespace-nowrap pointer-events-none">
+                                  <p className="font-semibold">{new Date(day.date).toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' })}</p>
+                                  <p className="text-teal-300">In: {day.inbound}</p>
+                                  <p className="text-rose-300">Out: {day.outbound}</p>
+                                </div>
+
+                                {/* Inbound Bar */}
+                                <motion.div
+                                  initial={{ height: 0 }}
+                                  animate={{ height: `${inboundHeight}%` }}
+                                  transition={{ duration: 0.8, delay: i * 0.05 }}
+                                  className="flex-1 bg-gradient-to-t from-teal-600 to-teal-400 rounded-t-sm min-h-[4px] cursor-pointer hover:from-teal-500 hover:to-teal-300 transition-colors"
+                                />
+
+                                {/* Outbound Bar */}
+                                <motion.div
+                                  initial={{ height: 0 }}
+                                  animate={{ height: `${outboundHeight}%` }}
+                                  transition={{ duration: 0.8, delay: i * 0.05 + 0.1 }}
+                                  className="flex-1 bg-gradient-to-t from-rose-500 to-rose-300 rounded-t-sm min-h-[4px] cursor-pointer hover:from-rose-400 hover:to-rose-200 transition-colors"
+                                />
+                              </div>
+                            );
+                          })}
                         </div>
-                      ))}
-                    </div>
-                    <div className="flex justify-between mt-4 text-xs text-slate-400 uppercase font-medium tracking-wider">
-                      <span>Jan 01</span>
-                      <span>Jan 15</span>
-                      <span>Jan 30</span>
-                    </div>
+
+                        {/* Date Labels */}
+                        <div className="flex justify-between mt-4 text-xs text-slate-400 font-medium">
+                          {stockMovement.length > 0 && (
+                            <>
+                              <span>{new Date(stockMovement[0].date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
+                              {stockMovement.length > 2 && (
+                                <span>{new Date(stockMovement[Math.floor(stockMovement.length / 2)].date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
+                              )}
+                              <span>{new Date(stockMovement[stockMovement.length - 1].date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
+                            </>
+                          )}
+                        </div>
+
+                        {/* Summary Stats */}
+                        <div className="grid grid-cols-2 gap-4 mt-6 pt-6 border-t border-slate-100">
+                          <div className="bg-teal-50 rounded-xl p-4">
+                            <p className="text-xs font-medium text-teal-600 mb-1">Total Inbound</p>
+                            <p className="text-2xl font-bold text-teal-700">
+                              {stockMovement.reduce((sum, d) => sum + d.inbound, 0)}
+                            </p>
+                          </div>
+                          <div className="bg-rose-50 rounded-xl p-4">
+                            <p className="text-xs font-medium text-rose-600 mb-1">Total Outbound</p>
+                            <p className="text-2xl font-bold text-rose-600">
+                              {stockMovement.reduce((sum, d) => sum + d.outbound, 0)}
+                            </p>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="h-64 flex items-center justify-center text-slate-400">
+                        <div className="text-center">
+                          <Package size={48} className="mx-auto mb-4 opacity-40" />
+                          <p className="font-medium">No stock movement data</p>
+                          <p className="text-sm">Data will appear once transactions are recorded</p>
+                        </div>
+                      </div>
+                    )}
                   </motion.div>
                 </div>
               )}
@@ -916,13 +1261,15 @@ export default function App() {
                                 )}
                               </td>
                               <td className="px-6 py-4 text-center">
-                                <button
-                                  onClick={() => openEditModal(product)}
-                                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-slate-100 text-slate-600 hover:bg-teal-50 hover:text-teal-600 border border-slate-200 hover:border-teal-200 transition-all"
-                                >
-                                  <Edit size={14} />
-                                  Edit
-                                </button>
+                                {hasPrivilege('product:update') && (
+                                  <button
+                                    onClick={() => openEditModal(product)}
+                                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-slate-100 text-slate-600 hover:bg-teal-50 hover:text-teal-600 border border-slate-200 hover:border-teal-200 transition-all"
+                                  >
+                                    <Edit size={14} />
+                                    Edit
+                                  </button>
+                                )}
                               </td>
                             </motion.tr>
                           ))}
@@ -938,6 +1285,99 @@ export default function App() {
                         <p className="text-sm">Start by adding your first item to the inventory.</p>
                       </div>
                     )}
+                  </div>
+                </motion.div>
+              )}
+
+
+              {activeTab === 'transactions' && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="space-y-6 max-w-7xl mx-auto"
+                >
+                  <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                    <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                      <div>
+                        <h3 className="text-lg font-bold text-slate-800">History Log</h3>
+                        <p className="text-sm text-slate-500">Record of all stock movements</p>
+                      </div>
+                      <button
+                        onClick={fetchTransactions}
+                        className="p-2 text-slate-500 hover:text-teal-600 hover:bg-white rounded-lg transition-all border border-transparent hover:border-slate-200 hover:shadow-sm"
+                        title="Refresh Transactions"
+                      >
+                        <History size={20} />
+                      </button>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left">
+                        <thead className="bg-slate-50 border-b border-slate-200">
+                          <tr>
+                            <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Date & Time</th>
+                            <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Product</th>
+                            <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Type</th>
+                            <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Qty</th>
+                            <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">User</th>
+                            <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Notes</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {transactions.length === 0 ? (
+                            <tr>
+                              <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
+                                <div className="bg-slate-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3">
+                                  <History size={24} className="opacity-50" />
+                                </div>
+                                <p>No transaction history found</p>
+                              </td>
+                            </tr>
+                          ) : (
+                            transactions.map((tx) => (
+                              <tr key={tx.id} className="hover:bg-slate-50 transition-colors group">
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="text-sm font-semibold text-slate-700">
+                                    {new Date(tx.created_at).toLocaleDateString()}
+                                  </div>
+                                  <div className="text-xs text-slate-400">
+                                    {new Date(tx.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <div className="text-sm font-bold text-slate-800">{tx.product?.name || 'Unknown Item'}</div>
+                                  <div className="text-xs text-slate-500 font-mono bg-slate-100 inline-block px-1 rounded border border-slate-200">{tx.product?.sku || 'N/A'}</div>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold border ${tx.type === 'IN'
+                                    ? 'bg-teal-50 text-teal-600 border-teal-100'
+                                    : 'bg-rose-50 text-rose-600 border-rose-100'
+                                    }`}>
+                                    {tx.type === 'IN' ? <TrendingUp size={12} /> : <TrendingUp size={12} className="rotate-180" />}
+                                    {tx.type}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4 text-right">
+                                  <span className="text-sm font-bold text-slate-700">{tx.quantity}</span>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600">
+                                      {tx.created_by_user?.full_name?.[0]?.toUpperCase() || 'U'}
+                                    </div>
+                                    <div className="text-sm text-slate-600">{tx.created_by_user?.full_name || 'Unknown'}</div>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <span className="text-sm text-slate-500 italic truncate max-w-[200px] block" title={tx.note}>
+                                    {tx.note || '-'}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </motion.div>
               )}
@@ -1005,8 +1445,19 @@ export default function App() {
               onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setTxForm({ ...txForm, note: e.target.value })}
             ></textarea>
           </div>
-          <button type="submit" className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold hover:bg-teal-600 transition-colors shadow-lg shadow-slate-900/10">
-            Confirm Transaction
+          <button
+            type="submit"
+            disabled={isSubmittingTx}
+            className={`w-full py-4 rounded-xl font-bold transition-all shadow-lg flex items-center justify-center gap-2 ${isSubmittingTx ? 'bg-slate-700 text-slate-400 cursor-not-allowed' : 'bg-slate-900 text-white hover:bg-teal-600 shadow-slate-900/10'}`}
+          >
+            {isSubmittingTx ? (
+              <>
+                <div className="w-5 h-5 border-2 border-slate-400 border-t-white rounded-full animate-spin" />
+                Processing...
+              </>
+            ) : (
+              'Confirm Transaction'
+            )}
           </button>
         </form>
       </Modal>
@@ -1063,8 +1514,19 @@ export default function App() {
             </div>
           </div>
 
-          <button type="submit" className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold hover:bg-teal-600 transition-colors shadow-lg shadow-slate-900/10">
-            Create Product
+          <button
+            type="submit"
+            disabled={isSubmittingProd}
+            className={`w-full py-4 rounded-xl font-bold transition-all shadow-lg flex items-center justify-center gap-2 ${isSubmittingProd ? 'bg-slate-700 text-slate-400 cursor-not-allowed' : 'bg-slate-900 text-white hover:bg-teal-600 shadow-slate-900/10'}`}
+          >
+            {isSubmittingProd ? (
+              <>
+                <div className="w-5 h-5 border-2 border-slate-400 border-t-white rounded-full animate-spin" />
+                Creating...
+              </>
+            ) : (
+              'Create Product'
+            )}
           </button>
         </form>
       </Modal>
@@ -1137,9 +1599,17 @@ export default function App() {
 
           <button
             type="submit"
-            className="w-full bg-teal-600 text-white py-4 rounded-xl font-bold hover:bg-teal-700 transition-colors shadow-lg shadow-teal-600/20"
+            disabled={isSubmittingEdit}
+            className={`w-full py-4 rounded-xl font-bold transition-all shadow-lg flex items-center justify-center gap-2 ${isSubmittingEdit ? 'bg-teal-800 text-teal-200 cursor-not-allowed' : 'bg-teal-600 text-white hover:bg-teal-700 shadow-teal-600/20'}`}
           >
-            Update Product
+            {isSubmittingEdit ? (
+              <>
+                <div className="w-5 h-5 border-2 border-teal-200 border-t-white rounded-full animate-spin" />
+                Updating...
+              </>
+            ) : (
+              'Update Product'
+            )}
           </button>
         </form>
       </Modal>
