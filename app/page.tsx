@@ -84,12 +84,15 @@ interface TxFormData {
   type: 'IN' | 'OUT';
   quantity: number | string;
   note: string;
+  payment_type: 'cash' | 'transfer';
+  total_payment: number;
 }
 
 interface ProdFormData {
   name: string;
   sku: string;
   stock: number;
+  price: number;
   attributes: { key: string; value: string }[];
 }
 
@@ -108,6 +111,14 @@ interface StockMovementData {
 interface StockMovementResponse {
   period: number;
   data: StockMovementData[];
+}
+
+interface FinanceStats {
+  total_income: number;
+  total_expense: number;
+  total_valuation: number;
+  period_start: string;
+  period_end: string;
 }
 
 interface Transaction {
@@ -291,11 +302,16 @@ export default function App() {
   const [wsConnected, setWsConnected] = useState<boolean>(false);
 
   // Forms State
-  const [txForm, setTxForm] = useState<TxFormData>({ product_id: '', type: 'IN', quantity: 1, note: '' });
+  const [txForm, setTxForm] = useState<TxFormData>({ product_id: '', type: 'IN', quantity: 1, note: '', payment_type: 'cash', total_payment: 0 });
   const [prodForm, setProdForm] = useState<ProdFormData>({
-    name: '', sku: '', stock: 0,
+    name: '', sku: '', stock: 0, price: 0,
     attributes: [{ key: '', value: '' }]
   });
+
+  // Cash Modal State
+  const [isCashModalOpen, setIsCashModalOpen] = useState<boolean>(false);
+  const [cashGiven, setCashGiven] = useState<number>(0);
+  const [pendingTxPayload, setPendingTxPayload] = useState<{ product_id: string; type: 'IN' | 'OUT'; quantity: number; note: string; payment_type: 'cash' | 'transfer'; total_payment: number } | null>(null);
 
   // Edit Product State
   const [isEditModalOpen, setIsEditModalOpen] = useState<boolean>(false);
@@ -315,8 +331,18 @@ export default function App() {
 
   // Dashboard Stats State
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
+  const [financeStats, setFinanceStats] = useState<FinanceStats | null>(null);
   const [stockMovement, setStockMovement] = useState<StockMovementData[]>([]);
   const [selectedPeriod, setSelectedPeriod] = useState<number>(7);
+
+  // Period options for finance stats and chart
+  const periodOptions = [
+    { value: 7, label: '7 Hari' },
+    { value: 30, label: '1 Bulan' },
+    { value: 90, label: '3 Bulan' },
+    { value: 180, label: '6 Bulan' },
+    { value: 365, label: '12 Bulan' },
+  ];
 
   // Calculate unread notifications count
   const unreadCount = notifications.filter(n => !n.read).length;
@@ -431,6 +457,41 @@ export default function App() {
     }
   };
 
+  // Fetch Finance Stats
+  const fetchFinanceStats = async (period: number = 7): Promise<void> => {
+    try {
+      const res = await fetch(`${API_URL}/api/v1/finance/stats?period=${period}`, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      if (!res.ok) throw new Error('Failed to fetch finance stats');
+      const data: FinanceStats = await res.json();
+      setFinanceStats(data);
+    } catch {
+      console.log("Using Mock Finance Stats");
+      // Generate mock finance data
+      const today = new Date();
+      const periodStart = new Date(today);
+      periodStart.setDate(periodStart.getDate() - period);
+      setFinanceStats({
+        total_income: Math.floor(Math.random() * 10000000) + 1000000,
+        total_expense: Math.floor(Math.random() * 8000000) + 500000,
+        total_valuation: Math.floor(Math.random() * 50000000) + 10000000,
+        period_start: periodStart.toISOString().split('T')[0],
+        period_end: today.toISOString().split('T')[0]
+      });
+    }
+  };
+
+  // Handle Period Change - updates both finance stats and stock movement
+  const handlePeriodChange = (period: number) => {
+    setSelectedPeriod(period);
+    fetchFinanceStats(period);
+    fetchStockMovement(period);
+  };
+
   // WebSocket Connection
   useEffect(() => {
     // Auth validation on mount
@@ -499,6 +560,7 @@ export default function App() {
     if (hasPrivilege('transaction:view')) fetchTransactions();
     if (hasPrivilege('dashboard:view')) {
       fetchDashboardStats();
+      fetchFinanceStats(selectedPeriod);
       fetchStockMovement(selectedPeriod);
     }
 
@@ -567,6 +629,12 @@ export default function App() {
               changeType = data.type === 'IN' ? 'IN' : 'OUT';
               quantity = data.quantity;
               break;
+            case 'financial_update':
+              message = data.message || 'Financial stats updated';
+              notifType = 'info';
+              // Refresh finance stats
+              fetchFinanceStats(selectedPeriod);
+              break;
             default:
               // Handle any other events
               message = data.message || `Update received: ${eventType}`;
@@ -628,9 +696,28 @@ export default function App() {
   const handleTxSubmit = async (e: FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault();
     if (isSubmittingTx) return;
+
+    const quantity = parseInt(String(txForm.quantity));
+    const payload = {
+      product_id: txForm.product_id,
+      type: txForm.type,
+      quantity: quantity,
+      note: txForm.note,
+      payment_type: txForm.payment_type,
+      total_payment: txForm.total_payment
+    };
+
+    // For cash payments, open the cash calculation modal
+    if (txForm.payment_type === 'cash') {
+      setPendingTxPayload(payload);
+      setCashGiven(0);
+      setIsCashModalOpen(true);
+      return;
+    }
+
+    // For transfer payments, submit directly
     setIsSubmittingTx(true);
     try {
-      const payload = { ...txForm, quantity: parseInt(String(txForm.quantity)) };
       const res = await fetch(`${API_URL}/transactions`, {
         method: 'POST',
         headers: {
@@ -642,6 +729,40 @@ export default function App() {
       if (!res.ok) throw new Error('Transaction failed');
       setToast({ message: 'Transaction recorded!', type: 'success' });
       setIsTxModalOpen(false);
+      setTxForm({ product_id: '', type: 'IN', quantity: 1, note: '', payment_type: 'cash', total_payment: 0 });
+      fetchProducts();
+      fetchTransactions();
+    } catch (err) { setToast({ message: err instanceof Error ? err.message : 'Unknown error', type: 'error' }); }
+    finally { setIsSubmittingTx(false); }
+  };
+
+  // Handle Cash Transaction Submit (from cash modal)
+  const handleCashTxSubmit = async (): Promise<void> => {
+    if (!pendingTxPayload || isSubmittingTx) return;
+
+    // Validate cash given >= total payment
+    if (cashGiven < pendingTxPayload.total_payment) {
+      setToast({ message: 'Uang yang diberikan kurang dari total pembayaran!', type: 'error' });
+      return;
+    }
+
+    setIsSubmittingTx(true);
+    try {
+      const res = await fetch(`${API_URL}/transactions`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(pendingTxPayload)
+      });
+      if (!res.ok) throw new Error('Transaction failed');
+      setToast({ message: 'Transaction recorded!', type: 'success' });
+      setIsCashModalOpen(false);
+      setIsTxModalOpen(false);
+      setPendingTxPayload(null);
+      setCashGiven(0);
+      setTxForm({ product_id: '', type: 'IN', quantity: 1, note: '', payment_type: 'cash', total_payment: 0 });
       fetchProducts();
       fetchTransactions();
     } catch (err) { setToast({ message: err instanceof Error ? err.message : 'Unknown error', type: 'error' }); }
@@ -655,7 +776,7 @@ export default function App() {
     const attrObj: Record<string, string> = {};
     prodForm.attributes.forEach(a => { if (a.key) attrObj[a.key] = a.value; });
     try {
-      const payload = { name: prodForm.name, sku: prodForm.sku, stock: parseInt(String(prodForm.stock)), attributes: attrObj };
+      const payload = { name: prodForm.name, sku: prodForm.sku, stock: parseInt(String(prodForm.stock)), price: parseInt(String(prodForm.price)), attributes: attrObj };
       const res = await fetch(`${API_URL}/products`, {
         method: 'POST',
         headers: {
@@ -1060,9 +1181,9 @@ export default function App() {
                     />
                     <StatCard
                       title="Est. Valuation"
-                      value={`IDR ${((dashboardStats?.total_valuation ?? 0) / 1000000).toFixed(1)}M`}
+                      value={`IDR ${((financeStats?.total_valuation ?? dashboardStats?.total_valuation ?? 0) / 1000000).toFixed(1)}M`}
                       icon={Wallet}
-                      trend="Total inventory value"
+                      trend={financeStats ? `${financeStats.period_start} - ${financeStats.period_end}` : 'Total inventory value'}
                       trendUp={true}
                       delay={0.3}
                     />
@@ -1083,11 +1204,11 @@ export default function App() {
                       <select
                         className="bg-slate-50 border border-slate-200 text-sm rounded-lg px-3 py-2 text-slate-600 outline-none focus:ring-2 focus:ring-teal-500/20"
                         value={selectedPeriod}
-                        onChange={(e) => fetchStockMovement(parseInt(e.target.value))}
+                        onChange={(e) => handlePeriodChange(parseInt(e.target.value))}
                       >
-                        <option value={7}>Last 7 Days</option>
-                        <option value={14}>Last 14 Days</option>
-                        <option value={30}>Last 30 Days</option>
+                        {periodOptions.map(opt => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
                       </select>
                     </div>
 
@@ -1444,11 +1565,47 @@ export default function App() {
               />
             </div>
           </div>
+
+          {/* Payment Type Selector */}
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">Tipe Pembayaran</label>
+            <div className="flex bg-slate-100 p-1 rounded-xl">
+              {[{ key: 'cash', label: 'Cash' }, { key: 'transfer', label: 'Transfer' }].map(pt => (
+                <button
+                  key={pt.key}
+                  type="button"
+                  onClick={() => setTxForm({ ...txForm, payment_type: pt.key as 'cash' | 'transfer' })}
+                  className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${txForm.payment_type === pt.key ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                >
+                  {pt.key === 'cash' ? <Wallet size={16} /> : <ArrowRightLeft size={16} />}
+                  {pt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Total Payment Input */}
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">Total Pembayaran (IDR)</label>
+            <input
+              type="number"
+              min="0"
+              className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none transition-all font-mono"
+              value={txForm.total_payment}
+              onChange={(e: ChangeEvent<HTMLInputElement>) => setTxForm({ ...txForm, total_payment: parseInt(e.target.value) || 0 })}
+              placeholder="0"
+              required
+            />
+            <p className="text-xs text-slate-400 mt-1">
+              {txForm.payment_type === 'cash' ? 'Masukkan total belanja. Modal perhitungan kembalian akan muncul.' : 'Masukkan total pembayaran transfer.'}
+            </p>
+          </div>
+
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-2">Notes</label>
             <textarea
               className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none transition-all"
-              rows={3}
+              rows={2}
               placeholder="E.g. Restock from vendor..."
               value={txForm.note}
               onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setTxForm({ ...txForm, note: e.target.value })}
@@ -1465,7 +1622,7 @@ export default function App() {
                 Processing...
               </>
             ) : (
-              'Confirm Transaction'
+              txForm.payment_type === 'cash' ? 'Lanjutkan ke Pembayaran' : 'Confirm Transaction'
             )}
           </button>
         </form>
@@ -1485,10 +1642,18 @@ export default function App() {
                 value={prodForm.sku} onChange={(e: ChangeEvent<HTMLInputElement>) => setProdForm({ ...prodForm, sku: e.target.value })} />
             </div>
           </div>
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Initial Stock</label>
-            <input type="number" min="0" required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none"
-              value={prodForm.stock} onChange={(e: ChangeEvent<HTMLInputElement>) => setProdForm({ ...prodForm, stock: parseInt(e.target.value) || 0 })} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Initial Stock</label>
+              <input type="number" min="0" required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none"
+                value={prodForm.stock} onChange={(e: ChangeEvent<HTMLInputElement>) => setProdForm({ ...prodForm, stock: parseInt(e.target.value) || 0 })} />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Harga (IDR) <span className="text-rose-500">*</span></label>
+              <input type="number" min="0" required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none font-mono"
+                value={prodForm.price} onChange={(e: ChangeEvent<HTMLInputElement>) => setProdForm({ ...prodForm, price: parseInt(e.target.value) || 0 })}
+                placeholder="0" />
+            </div>
           </div>
 
           <div className="border-t border-slate-100 pt-4">
@@ -1566,7 +1731,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2">Stock</label>
               <input
@@ -1589,12 +1754,19 @@ export default function App() {
               />
             </div>
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Price (IDR)</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">
+                Price (IDR)
+                {user?.roleCode === 'ADMIN' && <span className="text-xs text-slate-400 ml-1">(Disabled)</span>}
+              </label>
               <input
                 type="number"
                 min="0"
                 required
-                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none"
+                disabled={user?.roleCode === 'ADMIN'}
+                className={`w-full p-3 border border-slate-200 rounded-xl outline-none transition-all ${user?.roleCode === 'ADMIN'
+                  ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                  : 'bg-slate-50 focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500'
+                  }`}
                 value={editForm.price}
                 onChange={(e: ChangeEvent<HTMLInputElement>) => setEditForm({ ...editForm, price: parseInt(e.target.value) || 0 })}
               />
@@ -1621,6 +1793,86 @@ export default function App() {
             )}
           </button>
         </form>
+      </Modal>
+
+      {/* Cash Calculation Modal */}
+      <Modal isOpen={isCashModalOpen} onClose={() => { setIsCashModalOpen(false); setPendingTxPayload(null); }} title="Perhitungan Kembalian">
+        <div className="space-y-6">
+          {/* Total Belanja Display */}
+          <div className="bg-gradient-to-r from-teal-50 to-cyan-50 rounded-2xl p-5 border border-teal-100">
+            <p className="text-sm font-medium text-teal-600 mb-1">Total Belanja</p>
+            <p className="text-3xl font-bold text-slate-800">
+              IDR {(pendingTxPayload?.total_payment || 0).toLocaleString('id-ID')}
+            </p>
+          </div>
+
+          {/* Cash Given Input */}
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">Uang Diberikan (IDR)</label>
+            <input
+              type="number"
+              min="0"
+              className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none transition-all font-mono text-lg"
+              value={cashGiven || ''}
+              onChange={(e: ChangeEvent<HTMLInputElement>) => setCashGiven(parseInt(e.target.value) || 0)}
+              placeholder="Masukkan jumlah uang..."
+              autoFocus
+            />
+          </div>
+
+          {/* Change Calculation */}
+          <div className={`rounded-2xl p-5 border ${cashGiven >= (pendingTxPayload?.total_payment || 0) ? 'bg-teal-50 border-teal-200' : 'bg-rose-50 border-rose-200'}`}>
+            <p className="text-sm font-medium text-slate-600 mb-1">Kembalian</p>
+            <p className={`text-3xl font-bold ${cashGiven >= (pendingTxPayload?.total_payment || 0) ? 'text-teal-600' : 'text-rose-500'}`}>
+              IDR {Math.max(0, cashGiven - (pendingTxPayload?.total_payment || 0)).toLocaleString('id-ID')}
+            </p>
+            {cashGiven < (pendingTxPayload?.total_payment || 0) && cashGiven > 0 && (
+              <p className="text-xs text-rose-500 mt-2 font-medium">
+                ⚠️ Uang kurang IDR {((pendingTxPayload?.total_payment || 0) - cashGiven).toLocaleString('id-ID')}
+              </p>
+            )}
+          </div>
+
+          {/* Quick Amount Buttons */}
+          <div>
+            <p className="text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wider">Pilih Cepat</p>
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+              {[10000, 20000, 50000, 100000, 150000, 200000, 500000, 1000000].map(amount => (
+                <button
+                  key={amount}
+                  type="button"
+                  onClick={() => setCashGiven(amount)}
+                  className={`py-2 px-3 text-xs font-bold rounded-lg border transition-all ${cashGiven === amount ? 'bg-teal-500 text-white border-teal-500' : 'bg-white text-slate-600 border-slate-200 hover:border-teal-300 hover:bg-teal-50'}`}
+                >
+                  {amount >= 1000000 ? `${amount / 1000000}jt` : `${amount / 1000}rb`}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Submit Button */}
+          <button
+            type="button"
+            onClick={handleCashTxSubmit}
+            disabled={isSubmittingTx || cashGiven < (pendingTxPayload?.total_payment || 0)}
+            className={`w-full py-4 rounded-xl font-bold transition-all shadow-lg flex items-center justify-center gap-2 ${isSubmittingTx || cashGiven < (pendingTxPayload?.total_payment || 0)
+              ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+              : 'bg-teal-600 text-white hover:bg-teal-700 shadow-teal-600/20'
+              }`}
+          >
+            {isSubmittingTx ? (
+              <>
+                <div className="w-5 h-5 border-2 border-teal-200 border-t-white rounded-full animate-spin" />
+                Processing...
+              </>
+            ) : (
+              <>
+                <CheckCircle2 size={20} />
+                Simpan Transaksi
+              </>
+            )}
+          </button>
+        </div>
       </Modal>
 
       <AnimatePresence>
