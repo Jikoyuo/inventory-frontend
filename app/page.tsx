@@ -31,7 +31,7 @@ interface Product {
   name: string;
   sku: string;
   stock: number;
-  attributes: Record<string, string>;
+  price: number;
 }
 
 interface ToastData {
@@ -93,7 +93,6 @@ interface ProdFormData {
   sku: string;
   stock: number;
   price: number;
-  attributes: { key: string; value: string }[];
 }
 
 interface DashboardStats {
@@ -304,8 +303,7 @@ export default function App() {
   // Forms State
   const [txForm, setTxForm] = useState<TxFormData>({ product_id: '', type: 'IN', quantity: 1, note: '', payment_type: 'cash', total_payment: 0 });
   const [prodForm, setProdForm] = useState<ProdFormData>({
-    name: '', sku: '', stock: 0, price: 0,
-    attributes: [{ key: '', value: '' }]
+    name: '', sku: '', stock: 0, price: 0
   });
 
   // Cash Modal State
@@ -379,9 +377,9 @@ export default function App() {
     } catch {
       console.log("Using Mock Data");
       setProducts([
-        { id: '1', name: 'Macbook Pro M3', sku: 'MBP-001', stock: 12, attributes: { color: 'Space Grey', ram: '16GB' } },
-        { id: '2', name: 'Logitech MX Master 3S', sku: 'LOG-MX3', stock: 4, attributes: { color: 'Black' } },
-        { id: '3', name: 'Keychron Q1 Pro', sku: 'KEY-Q1', stock: 0, attributes: { switch: 'Banana', layout: '75%' } },
+        { id: '1', name: 'Macbook Pro M3', sku: 'MBP-001', stock: 12, price: 35000000 },
+        { id: '2', name: 'Logitech MX Master 3S', sku: 'LOG-MX3', stock: 4, price: 1500000 },
+        { id: '3', name: 'Keychron Q1 Pro', sku: 'KEY-Q1', stock: 0, price: 3500000 },
       ]);
     }
   };
@@ -460,7 +458,7 @@ export default function App() {
   // Fetch Finance Stats
   const fetchFinanceStats = async (period: number = 7): Promise<void> => {
     try {
-      const res = await fetch(`${API_URL}/api/v1/finance/stats?period=${period}`, {
+      const res = await fetch(`${API_URL}/finance/stats?period=${period}`, {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
           'Content-Type': 'application/json'
@@ -773,10 +771,13 @@ export default function App() {
     e.preventDefault();
     if (isSubmittingProd) return;
     setIsSubmittingProd(true);
-    const attrObj: Record<string, string> = {};
-    prodForm.attributes.forEach(a => { if (a.key) attrObj[a.key] = a.value; });
     try {
-      const payload = { name: prodForm.name, sku: prodForm.sku, stock: parseInt(String(prodForm.stock)), price: parseInt(String(prodForm.price)), attributes: attrObj };
+      const payload = {
+        name: prodForm.name,
+        sku: prodForm.sku,
+        stock: parseInt(String(prodForm.stock)),
+        price: parseInt(String(prodForm.price))
+      };
       const res = await fetch(`${API_URL}/products`, {
         method: 'POST',
         headers: {
@@ -951,6 +952,21 @@ export default function App() {
                   <div className="flex items-center gap-3">
                     <Users size={20} className="text-slate-400 group-hover:text-teal-500" />
                     User Management
+                  </div>
+                  <ChevronRight size={16} className="text-slate-400 group-hover:text-teal-500 opacity-0 group-hover:opacity-100" />
+                </a>
+
+                {/* Shifts Schedule Link */}
+                <a
+                  href="/shifts"
+                  onClick={(e) => { e.preventDefault(); window.location.href = '/shifts'; }}
+                  className="w-full flex items-center justify-between px-4 py-3.5 rounded-xl text-sm font-medium transition-all duration-200 group text-slate-500 hover:bg-slate-50 hover:text-teal-600"
+                >
+                  <div className="flex items-center gap-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400 group-hover:text-teal-500">
+                      <rect width="18" height="18" x="3" y="4" rx="2" ry="2" /><line x1="16" x2="16" y1="2" y2="6" /><line x1="8" x2="8" y1="2" y2="6" /><line x1="3" x2="21" y1="10" y2="10" /><path d="M8 14h.01" /><path d="M12 14h.01" /><path d="M16 14h.01" /><path d="M8 18h.01" /><path d="M12 18h.01" /><path d="M16 18h.01" />
+                    </svg>
+                    Shift Schedule
                   </div>
                   <ChevronRight size={16} className="text-slate-400 group-hover:text-teal-500 opacity-0 group-hover:opacity-100" />
                 </a>
@@ -1366,13 +1382,9 @@ export default function App() {
                                 </span>
                               </td>
                               <td className="px-6 py-4">
-                                <div className="flex flex-wrap gap-2">
-                                  {Object.entries(product.attributes || {}).map(([key, val]) => (
-                                    <span key={key} className="inline-flex items-center px-2.5 py-1 rounded-md text-[10px] font-semibold bg-cyan-50 text-cyan-700 border border-cyan-100 uppercase tracking-wide">
-                                      <span className="opacity-50 mr-1">{key}:</span> {val}
-                                    </span>
-                                  ))}
-                                </div>
+                                <span className="text-sm font-semibold text-slate-700">
+                                  Rp {product.price?.toLocaleString('id-ID') || '0'}
+                                </span>
                               </td>
                               <td className="px-6 py-4 text-right">
                                 <span className={`text-lg font-bold ${product.stock < 5 ? 'text-rose-500' : 'text-slate-700'}`}>
@@ -1656,37 +1668,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className="border-t border-slate-100 pt-4">
-            <div className="flex justify-between items-center mb-3">
-              <label className="text-sm font-semibold text-slate-700">Attributes (JSON)</label>
-              <button type="button" onClick={() => setProdForm({ ...prodForm, attributes: [...prodForm.attributes, { key: '', value: '' }] })}
-                className="text-xs font-bold text-teal-600 hover:text-teal-700 flex items-center gap-1 bg-teal-50 px-2 py-1 rounded-lg">
-                <Plus size={12} /> ADD NEW
-              </button>
-            </div>
-            <div className="space-y-2 max-h-40 overflow-y-auto pr-1 custom-scrollbar">
-              {prodForm.attributes.map((attr, idx) => (
-                <div key={idx} className="flex gap-2">
-                  <input type="text" placeholder="Key" className="flex-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:border-teal-500 outline-none"
-                    value={attr.key} onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                      const newAttrs = [...prodForm.attributes];
-                      newAttrs[idx].key = e.target.value;
-                      setProdForm({ ...prodForm, attributes: newAttrs });
-                    }} />
-                  <input type="text" placeholder="Value" className="flex-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:border-teal-500 outline-none"
-                    value={attr.value} onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                      const newAttrs = [...prodForm.attributes];
-                      newAttrs[idx].value = e.target.value;
-                      setProdForm({ ...prodForm, attributes: newAttrs });
-                    }} />
-                  <button type="button" onClick={() => {
-                    const newAttrs = prodForm.attributes.filter((_, i) => i !== idx);
-                    setProdForm({ ...prodForm, attributes: newAttrs });
-                  }} className="text-rose-400 hover:text-rose-600 px-1"><X size={16} /></button>
-                </div>
-              ))}
-            </div>
-          </div>
+
 
           <button
             type="submit"
