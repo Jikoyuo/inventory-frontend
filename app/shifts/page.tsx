@@ -70,7 +70,7 @@ interface UserOption {
     email: string;
 }
 
-type ViewType = 'daily' | 'weekly' | 'monthly' | 'all';
+type ViewType = 'daily' | 'weekly' | 'monthly';
 
 // Helper functions
 const formatDate = (dateStr: string): string => {
@@ -95,14 +95,56 @@ const getWeekDays = (referenceDate: Date): Date[] => {
     return days;
 };
 
+// Get all days in a month with padding for calendar grid
+const getMonthDays = (referenceDate: Date): (Date | null)[] => {
+    const year = referenceDate.getFullYear();
+    const month = referenceDate.getMonth();
+
+    // First day of the month
+    const firstDay = new Date(year, month, 1);
+    // Last day of the month
+    const lastDay = new Date(year, month + 1, 0);
+
+    const days: (Date | null)[] = [];
+
+    // Add padding for days before the first day (to align with week grid)
+    const firstDayOfWeek = firstDay.getDay();
+    const paddingStart = firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1; // Monday = 0
+    for (let i = 0; i < paddingStart; i++) {
+        days.push(null);
+    }
+
+    // Add all days of the month
+    for (let d = 1; d <= lastDay.getDate(); d++) {
+        days.push(new Date(year, month, d));
+    }
+
+    // Add padding at the end to complete the grid
+    while (days.length % 7 !== 0) {
+        days.push(null);
+    }
+
+    return days;
+};
+
 const isSameDay = (date1: Date, date2: Date): boolean => {
     return date1.toDateString() === date2.toDateString();
 };
 
 const isDateInRange = (date: Date, startDate: string, endDate: string): boolean => {
-    const d = new Date(date.toDateString());
-    const start = new Date(startDate);
-    const end = new Date(endDate);
+    // Parse dates correctly without timezone issues
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const day = date.getDate();
+    const d = new Date(year, month, day);
+
+    // Parse start and end dates as local dates (YYYY-MM-DD format)
+    const [sYear, sMonth, sDay] = startDate.split('-').map(Number);
+    const start = new Date(sYear, sMonth - 1, sDay);
+
+    const [eYear, eMonth, eDay] = endDate.split('-').map(Number);
+    const end = new Date(eYear, eMonth - 1, eDay);
+
     return d >= start && d <= end;
 };
 
@@ -425,6 +467,9 @@ export default function ShiftsPage() {
     // Get week days for calendar
     const weekDays = getWeekDays(referenceDate);
 
+    // Get month days for monthly calendar
+    const monthDays = getMonthDays(referenceDate);
+
     // Filter shifts for a specific day
     const getShiftsForDay = (day: Date): Shift[] => {
         return shifts.filter(shift => isDateInRange(day, shift.start_date, shift.end_date));
@@ -568,20 +613,20 @@ export default function ShiftsPage() {
                                     referenceDate.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })
                                 ) : viewType === 'daily' ? (
                                     formatDate(referenceDate.toISOString())
-                                ) : 'All Shifts'}
+                                ) : 'Semua Jadwal'}
                             </span>
                         </div>
 
                         {/* View Type Selector */}
                         <div className="flex bg-slate-100 rounded-xl p-1">
-                            {(['daily', 'weekly', 'monthly', 'all'] as ViewType[]).map(type => (
+                            {(['daily', 'weekly', 'monthly'] as ViewType[]).map(type => (
                                 <button
                                     key={type}
                                     onClick={() => setViewType(type)}
-                                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all capitalize ${viewType === type ? 'bg-white shadow text-teal-600' : 'text-slate-500 hover:text-slate-700'
+                                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${viewType === type ? 'bg-white shadow text-teal-600' : 'text-slate-500 hover:text-slate-700'
                                         }`}
                                 >
-                                    {type}
+                                    {type === 'daily' ? 'Harian' : type === 'weekly' ? 'Mingguan' : 'Bulanan'}
                                 </button>
                             ))}
                         </div>
@@ -598,64 +643,167 @@ export default function ShiftsPage() {
                 ) : viewMode === 'calendar' ? (
                     /* Calendar View */
                     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                        {/* Calendar Header */}
-                        <div className="grid grid-cols-7 bg-slate-50 border-b border-slate-200">
-                            {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, i) => (
-                                <div key={day} className={`px-2 py-3 text-center text-xs font-semibold uppercase tracking-wider ${i >= 5 ? 'text-rose-500' : 'text-slate-600'
-                                    }`}>
-                                    {day}
+                        {/* Daily View */}
+                        {viewType === 'daily' && (
+                            <>
+                                <div className="p-4 bg-slate-50 border-b border-slate-200">
+                                    <h3 className="text-lg font-bold text-slate-800">
+                                        {referenceDate.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                                    </h3>
                                 </div>
-                            ))}
-                        </div>
-
-                        {/* Calendar Grid */}
-                        <div className="grid grid-cols-7 divide-x divide-slate-100">
-                            {weekDays.map((day, idx) => {
-                                const dayShifts = getShiftsForDay(day);
-                                const isToday = isSameDay(day, new Date());
-                                const isWeekend = idx >= 5;
-
-                                return (
-                                    <div
-                                        key={day.toISOString()}
-                                        className={`min-h-[160px] md:min-h-[200px] p-2 ${isToday ? 'bg-teal-50/50' : isWeekend ? 'bg-slate-50/50' : ''
-                                            }`}
-                                    >
-                                        <div className={`text-sm font-bold mb-2 ${isToday ? 'text-teal-600' : isWeekend ? 'text-rose-500' : 'text-slate-700'
-                                            }`}>
-                                            {day.getDate()}
+                                <div className="p-4">
+                                    {getShiftsForDay(referenceDate).length === 0 ? (
+                                        <div className="text-center py-12">
+                                            <Calendar className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                                            <p className="text-slate-500">Tidak ada jadwal untuk hari ini</p>
                                         </div>
-
-                                        <div className="space-y-1.5">
-                                            {dayShifts.slice(0, 3).map(shift => (
+                                    ) : (
+                                        <div className="space-y-3">
+                                            {getShiftsForDay(referenceDate).map(shift => (
                                                 <motion.div
                                                     key={shift.id}
-                                                    initial={{ opacity: 0, scale: 0.95 }}
-                                                    animate={{ opacity: 1, scale: 1 }}
-                                                    className={`p-2 rounded-lg text-xs border cursor-pointer transition-all hover:shadow-md ${generateUserColor(shift.user_id)
-                                                        }`}
+                                                    initial={{ opacity: 0, y: 10 }}
+                                                    animate={{ opacity: 1, y: 0 }}
+                                                    className={`p-4 rounded-xl border-2 cursor-pointer transition-all hover:shadow-lg ${generateUserColor(shift.user_id)}`}
                                                     onClick={() => isMasterAdmin && openEditModal(shift)}
                                                 >
-                                                    <div className="font-semibold truncate flex items-center gap-1">
-                                                        {shift.is_overnight && <Moon size={10} className="text-purple-500" />}
-                                                        {shift.start_time} - {shift.end_time}
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${generateUserColor(shift.user_id)}`}>
+                                                                {shift.user.full_name.charAt(0).toUpperCase()}
+                                                            </div>
+                                                            <div>
+                                                                <p className="font-bold text-slate-800">{shift.user.full_name}</p>
+                                                                <p className="text-xs opacity-70">{shift.user.email}</p>
+                                                            </div>
+                                                        </div>
+                                                        {shift.is_overnight && (
+                                                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">
+                                                                <Moon size={12} /> Shift Malam
+                                                            </span>
+                                                        )}
                                                     </div>
-                                                    <div className="truncate opacity-80">
-                                                        {shift.user.full_name}
+                                                    <div className="flex items-center gap-2 text-sm font-mono">
+                                                        <Clock size={16} className="opacity-60" />
+                                                        <span className="font-bold">{shift.start_time} - {shift.end_time}</span>
                                                     </div>
                                                 </motion.div>
                                             ))}
-
-                                            {dayShifts.length > 3 && (
-                                                <div className="text-xs text-slate-500 font-medium pl-1">
-                                                    +{dayShifts.length - 3} more
-                                                </div>
-                                            )}
                                         </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
+                                    )}
+                                </div>
+                            </>
+                        )}
+
+                        {/* Weekly View */}
+                        {viewType === 'weekly' && (
+                            <>
+                                <div className="grid grid-cols-7 bg-slate-50 border-b border-slate-200">
+                                    {['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'].map((day, i) => (
+                                        <div key={day} className={`px-2 py-3 text-center text-xs font-semibold uppercase tracking-wider ${i >= 5 ? 'text-rose-500' : 'text-slate-600'}`}>
+                                            {day}
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="grid grid-cols-7 divide-x divide-slate-100">
+                                    {weekDays.map((day, idx) => {
+                                        const dayShifts = getShiftsForDay(day);
+                                        const isToday = isSameDay(day, new Date());
+                                        const isWeekend = idx >= 5;
+
+                                        return (
+                                            <div
+                                                key={day.toISOString()}
+                                                className={`min-h-[160px] md:min-h-[200px] p-2 ${isToday ? 'bg-teal-50/50' : isWeekend ? 'bg-slate-50/50' : ''}`}
+                                            >
+                                                <div className={`text-sm font-bold mb-2 ${isToday ? 'text-teal-600' : isWeekend ? 'text-rose-500' : 'text-slate-700'}`}>
+                                                    {day.getDate()}
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    {dayShifts.slice(0, 3).map(shift => (
+                                                        <motion.div
+                                                            key={shift.id}
+                                                            initial={{ opacity: 0, scale: 0.95 }}
+                                                            animate={{ opacity: 1, scale: 1 }}
+                                                            className={`p-2 rounded-lg text-xs border cursor-pointer transition-all hover:shadow-md ${generateUserColor(shift.user_id)}`}
+                                                            onClick={() => isMasterAdmin && openEditModal(shift)}
+                                                        >
+                                                            <div className="font-semibold truncate flex items-center gap-1">
+                                                                {shift.is_overnight && <Moon size={10} className="text-purple-500" />}
+                                                                {shift.start_time} - {shift.end_time}
+                                                            </div>
+                                                            <div className="truncate opacity-80">
+                                                                {shift.user.full_name}
+                                                            </div>
+                                                        </motion.div>
+                                                    ))}
+                                                    {dayShifts.length > 3 && (
+                                                        <div className="text-xs text-slate-500 font-medium pl-1">
+                                                            +{dayShifts.length - 3} lainnya
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </>
+                        )}
+
+                        {/* Monthly View */}
+                        {viewType === 'monthly' && (
+                            <>
+                                <div className="grid grid-cols-7 bg-slate-50 border-b border-slate-200">
+                                    {['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'].map((day, i) => (
+                                        <div key={day} className={`px-2 py-3 text-center text-xs font-semibold uppercase tracking-wider ${i >= 5 ? 'text-rose-500' : 'text-slate-600'}`}>
+                                            {day}
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="grid grid-cols-7 divide-x divide-slate-100">
+                                    {monthDays.map((day, idx) => {
+                                        if (!day) {
+                                            return <div key={`empty-${idx}`} className="min-h-[80px] md:min-h-[100px] bg-slate-50/30" />;
+                                        }
+
+                                        const dayShifts = getShiftsForDay(day);
+                                        const isToday = isSameDay(day, new Date());
+                                        const dayOfWeek = day.getDay();
+                                        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+
+                                        return (
+                                            <div
+                                                key={day.toISOString()}
+                                                className={`min-h-[80px] md:min-h-[100px] p-1 md:p-2 border-b border-slate-100 ${isToday ? 'bg-teal-50/50' : isWeekend ? 'bg-slate-50/50' : ''}`}
+                                            >
+                                                <div className={`text-xs md:text-sm font-bold mb-1 ${isToday ? 'text-teal-600' : isWeekend ? 'text-rose-500' : 'text-slate-700'}`}>
+                                                    {day.getDate()}
+                                                </div>
+                                                <div className="space-y-0.5">
+                                                    {dayShifts.slice(0, 2).map(shift => (
+                                                        <div
+                                                            key={shift.id}
+                                                            className={`p-1 rounded text-[10px] md:text-xs border cursor-pointer ${generateUserColor(shift.user_id)}`}
+                                                            onClick={() => isMasterAdmin && openEditModal(shift)}
+                                                        >
+                                                            <div className="truncate flex items-center gap-0.5">
+                                                                {shift.is_overnight && <Moon size={8} className="text-purple-500" />}
+                                                                {shift.user.full_name.split(' ')[0]}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                    {dayShifts.length > 2 && (
+                                                        <div className="text-[10px] text-slate-400 pl-0.5">
+                                                            +{dayShifts.length - 2}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </>
+                        )}
                     </div>
                 ) : (
                     /* List View */
@@ -719,11 +867,11 @@ export default function ShiftsPage() {
                                                 <td className="px-4 md:px-6 py-4">
                                                     {shift.is_overnight ? (
                                                         <span className="inline-flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">
-                                                            <Moon size={12} /> Overnight
+                                                            <Moon size={12} /> Shift Malam
                                                         </span>
                                                     ) : (
                                                         <span className="inline-flex items-center gap-1 px-2 py-1 bg-amber-100 text-amber-700 rounded-full text-xs font-medium">
-                                                            <Sun size={12} /> Day
+                                                            <Sun size={12} /> Shift Siang
                                                         </span>
                                                     )}
                                                 </td>

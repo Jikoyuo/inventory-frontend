@@ -1755,10 +1755,6 @@ export default function App() {
             </div>
           </div>
 
-          <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
-            <p className="text-xs text-slate-500 mb-1">Editing Product ID:</p>
-            <code className="text-xs font-mono text-slate-600 break-all">{editingProduct?.id}</code>
-          </div>
 
           <button
             type="submit"
