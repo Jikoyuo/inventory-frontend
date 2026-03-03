@@ -24,6 +24,7 @@ import {
     RefreshCw
 } from 'lucide-react';
 import { useAppSelector } from '../../store/hooks';
+import AppLayout from '../../components/AppLayout';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL;
@@ -171,12 +172,13 @@ const generateUserColor = (userId: string): string => {
 export default function ShiftsPage() {
     const user = useAppSelector((state) => state.auth.user);
     const accessToken = useAppSelector((state) => state.auth.accessToken);
+    const privileges = useAppSelector((state) => state.auth.privileges);
+    const hasPrivilege = (permission: string) => privileges.includes(permission);
 
     // State
     const [shifts, setShifts] = useState<Shift[]>([]);
     const [users, setUsers] = useState<UserOption[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [isValidating, setIsValidating] = useState(true);
     const [isMasterAdmin, setIsMasterAdmin] = useState(false);
 
     const [viewType, setViewType] = useState<ViewType>('weekly');
@@ -203,36 +205,7 @@ export default function ShiftsPage() {
     });
     const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
-    // Validate auth
-    useEffect(() => {
-        const validateAuth = async () => {
-            try {
-                const token = localStorage.getItem('accessToken');
-                if (!token) {
-                    window.location.href = '/login';
-                    return;
-                }
 
-                const res = await fetch(`${API_URL}/auth/validate-token`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ token })
-                });
-
-                if (!res.ok) {
-                    localStorage.removeItem('accessToken');
-                    window.location.href = '/login';
-                    return;
-                }
-
-                setIsValidating(false);
-            } catch {
-                localStorage.removeItem('accessToken');
-                window.location.href = '/login';
-            }
-        };
-        validateAuth();
-    }, []);
 
     // Fetch shifts
     const fetchShifts = async () => {
@@ -277,11 +250,11 @@ export default function ShiftsPage() {
     };
 
     useEffect(() => {
-        if (!isValidating && accessToken) {
+        if (accessToken) {
             fetchShifts();
             fetchUsers();
         }
-    }, [isValidating, accessToken, viewType, referenceDate]);
+    }, [accessToken, viewType, referenceDate]);
 
     // WebSocket for real-time notifications
     useEffect(() => {
@@ -475,23 +448,8 @@ export default function ShiftsPage() {
         return shifts.filter(shift => isDateInRange(day, shift.start_date, shift.end_date));
     };
 
-    // Loading state
-    if (isValidating) {
-        return (
-            <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-                <div className="flex flex-col items-center">
-                    <div className="relative">
-                        <div className="absolute inset-0 bg-teal-500/20 blur-3xl rounded-full" />
-                        <Loader2 className="w-16 h-16 text-teal-400 animate-spin relative z-10" />
-                    </div>
-                    <h3 className="mt-6 text-xl font-bold text-white">Validating session...</h3>
-                </div>
-            </div>
-        );
-    }
-
     return (
-        <div className="min-h-screen bg-slate-50">
+        <AppLayout>
             {/* Toast */}
             <AnimatePresence>
                 {toast && (
@@ -517,8 +475,8 @@ export default function ShiftsPage() {
             </AnimatePresence>
 
             {/* Header */}
-            <div className="bg-white border-b border-slate-200 sticky top-0 z-30">
-                <div className="max-w-7xl mx-auto px-4 md:px-6 py-4 md:py-6">
+            <div className="bg-white border-b border-slate-200 sticky top-0 z-20">
+                <div className="px-4 md:px-6 py-4 md:py-6">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div className="flex items-center gap-3">
                             <div className="w-12 h-12 bg-gradient-to-br from-teal-400 to-cyan-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-teal-500/30">
@@ -527,7 +485,7 @@ export default function ShiftsPage() {
                             <div>
                                 <h1 className="text-xl md:text-2xl font-bold text-slate-800">Shift Schedule</h1>
                                 <p className="text-sm text-slate-500">
-                                    {isMasterAdmin ? 'Manage all user shifts' : 'Your shift schedule'}
+                                    {hasPrivilege('shift:create') ? 'Manage all user shifts' : 'Your shift schedule'}
                                 </p>
                             </div>
                         </div>
@@ -536,7 +494,7 @@ export default function ShiftsPage() {
                             {/* WS Status */}
                             <div className={`hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium ${wsConnected ? 'bg-teal-50 text-teal-600' : 'bg-slate-100 text-slate-400'
                                 }`}>
-                                <span className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-teal-500 animate-pulse' : 'bg-slate-400'}`} />
+                                <span className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
                                 {wsConnected ? 'Live' : 'Offline'}
                             </div>
 
@@ -568,10 +526,10 @@ export default function ShiftsPage() {
                             </div>
 
                             {/* Add Shift Button (MASTER ADMIN only) */}
-                            {isMasterAdmin && (
+                            {hasPrivilege('shift:create') && (
                                 <button
                                     onClick={() => { resetForm(); setIsModalOpen(true); }}
-                                    className="flex items-center gap-2 bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-400 hover:to-cyan-400 text-white px-4 py-2.5 rounded-xl font-medium shadow-lg shadow-teal-500/25 transition-all"
+                                    className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-4 py-2.5 rounded-xl font-medium shadow-lg shadow-slate-800/25 transition-all"
                                 >
                                     <Plus size={20} />
                                     <span className="hidden sm:inline">Add Shift</span>
@@ -638,7 +596,7 @@ export default function ShiftsPage() {
             <div className="max-w-7xl mx-auto px-4 md:px-6 py-6">
                 {isLoading ? (
                     <div className="flex items-center justify-center py-20">
-                        <Loader2 className="w-10 h-10 text-teal-500 animate-spin" />
+                        <Loader2 className="w-10 h-10 text-slate-500 animate-spin" />
                     </div>
                 ) : viewMode === 'calendar' ? (
                     /* Calendar View */
@@ -665,7 +623,7 @@ export default function ShiftsPage() {
                                                     initial={{ opacity: 0, y: 10 }}
                                                     animate={{ opacity: 1, y: 0 }}
                                                     className={`p-4 rounded-xl border-2 cursor-pointer transition-all hover:shadow-lg ${generateUserColor(shift.user_id)}`}
-                                                    onClick={() => isMasterAdmin && openEditModal(shift)}
+                                                    onClick={() => hasPrivilege('shift:update') && openEditModal(shift)}
                                                 >
                                                     <div className="flex items-center justify-between mb-2">
                                                         <div className="flex items-center gap-3">
@@ -726,7 +684,7 @@ export default function ShiftsPage() {
                                                             initial={{ opacity: 0, scale: 0.95 }}
                                                             animate={{ opacity: 1, scale: 1 }}
                                                             className={`p-2 rounded-lg text-xs border cursor-pointer transition-all hover:shadow-md ${generateUserColor(shift.user_id)}`}
-                                                            onClick={() => isMasterAdmin && openEditModal(shift)}
+                                                            onClick={() => hasPrivilege('shift:update') && openEditModal(shift)}
                                                         >
                                                             <div className="font-semibold truncate flex items-center gap-1">
                                                                 {shift.is_overnight && <Moon size={10} className="text-purple-500" />}
@@ -784,7 +742,7 @@ export default function ShiftsPage() {
                                                         <div
                                                             key={shift.id}
                                                             className={`p-1 rounded text-[10px] md:text-xs border cursor-pointer ${generateUserColor(shift.user_id)}`}
-                                                            onClick={() => isMasterAdmin && openEditModal(shift)}
+                                                            onClick={() => hasPrivilege('shift:update') && openEditModal(shift)}
                                                         >
                                                             <div className="truncate flex items-center gap-0.5">
                                                                 {shift.is_overnight && <Moon size={8} className="text-purple-500" />}
@@ -813,7 +771,7 @@ export default function ShiftsPage() {
                                 <Calendar className="w-16 h-16 text-slate-300 mx-auto mb-4" />
                                 <p className="text-slate-500 font-medium">No shifts found</p>
                                 <p className="text-sm text-slate-400 mt-1">
-                                    {isMasterAdmin ? 'Click "Add Shift" to create one' : 'No shifts assigned to you'}
+                                    {hasPrivilege('shift:create') ? 'Click "Add Shift" to create one' : 'No shifts assigned to you'}
                                 </p>
                             </div>
                         ) : (
@@ -826,7 +784,7 @@ export default function ShiftsPage() {
                                             <th className="px-4 md:px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase">Date Range</th>
                                             <th className="px-4 md:px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase">Type</th>
                                             <th className="px-4 md:px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase">Note</th>
-                                            {isMasterAdmin && (
+                                            {(hasPrivilege('shift:update') || hasPrivilege('shift:delete')) && (
                                                 <th className="px-4 md:px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase">Actions</th>
                                             )}
                                         </tr>
@@ -878,21 +836,25 @@ export default function ShiftsPage() {
                                                 <td className="px-4 md:px-6 py-4 text-sm text-slate-500 max-w-[200px] truncate">
                                                     {shift.note || '-'}
                                                 </td>
-                                                {isMasterAdmin && (
+                                                {(hasPrivilege('shift:update') || hasPrivilege('shift:delete')) && (
                                                     <td className="px-4 md:px-6 py-4">
                                                         <div className="flex justify-end gap-1">
-                                                            <button
-                                                                onClick={() => openEditModal(shift)}
-                                                                className="p-2 text-slate-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg"
-                                                            >
-                                                                <Edit size={16} />
-                                                            </button>
-                                                            <button
-                                                                onClick={() => openDeleteModal(shift.id)}
-                                                                className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"
-                                                            >
-                                                                <Trash2 size={16} />
-                                                            </button>
+                                                            {hasPrivilege('shift:update') && (
+                                                                <button
+                                                                    onClick={() => openEditModal(shift)}
+                                                                    className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg"
+                                                                >
+                                                                    <Edit size={16} />
+                                                                </button>
+                                                            )}
+                                                            {hasPrivilege('shift:delete') && (
+                                                                <button
+                                                                    onClick={() => openDeleteModal(shift.id)}
+                                                                    className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"
+                                                                >
+                                                                    <Trash2 size={16} />
+                                                                </button>
+                                                            )}
                                                         </div>
                                                     </td>
                                                 )}
@@ -918,7 +880,7 @@ export default function ShiftsPage() {
                         >
                             <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
                                 <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                                    <div className="w-1 h-6 bg-teal-500 rounded-full" />
+                                    <div className="w-1 h-6 bg-slate-800 rounded-full" />
                                     {editingShift ? 'Edit Shift' : 'Create New Shift'}
                                 </h3>
                                 <button
@@ -944,7 +906,7 @@ export default function ShiftsPage() {
                                                 setFormErrors({ ...formErrors, user_id: '' });
                                             }}
                                             className={`w-full pl-11 pr-4 py-3 bg-slate-50 border rounded-xl appearance-none ${formErrors.user_id ? 'border-rose-500' : 'border-slate-200'
-                                                } focus:outline-none focus:border-teal-500`}
+                                                } focus:outline-none focus:border-slate-400`}
                                         >
                                             <option value="">Select user...</option>
                                             {users.map(u => (
@@ -971,7 +933,7 @@ export default function ShiftsPage() {
                                                     setFormErrors({ ...formErrors, start_time: '' });
                                                 }}
                                                 className={`w-full pl-11 pr-4 py-3 bg-slate-50 border rounded-xl ${formErrors.start_time ? 'border-rose-500' : 'border-slate-200'
-                                                    } focus:outline-none focus:border-teal-500`}
+                                                    } focus:outline-none focus:border-slate-400`}
                                             />
                                         </div>
                                         {formErrors.start_time && <p className="mt-1 text-xs text-rose-600">{formErrors.start_time}</p>}
@@ -990,7 +952,7 @@ export default function ShiftsPage() {
                                                     setFormErrors({ ...formErrors, end_time: '' });
                                                 }}
                                                 className={`w-full pl-11 pr-4 py-3 bg-slate-50 border rounded-xl ${formErrors.end_time ? 'border-rose-500' : 'border-slate-200'
-                                                    } focus:outline-none focus:border-teal-500`}
+                                                    } focus:outline-none focus:border-slate-400`}
                                             />
                                         </div>
                                         {formErrors.end_time && <p className="mt-1 text-xs text-rose-600">{formErrors.end_time}</p>}
@@ -1021,7 +983,7 @@ export default function ShiftsPage() {
                                                 setFormErrors({ ...formErrors, start_date: '' });
                                             }}
                                             className={`w-full px-4 py-3 bg-slate-50 border rounded-xl ${formErrors.start_date ? 'border-rose-500' : 'border-slate-200'
-                                                } focus:outline-none focus:border-teal-500`}
+                                                } focus:outline-none focus:border-slate-400`}
                                         />
                                         {formErrors.start_date && <p className="mt-1 text-xs text-rose-600">{formErrors.start_date}</p>}
                                     </div>
@@ -1037,7 +999,7 @@ export default function ShiftsPage() {
                                                 setFormErrors({ ...formErrors, end_date: '' });
                                             }}
                                             className={`w-full px-4 py-3 bg-slate-50 border rounded-xl ${formErrors.end_date ? 'border-rose-500' : 'border-slate-200'
-                                                } focus:outline-none focus:border-teal-500`}
+                                                } focus:outline-none focus:border-slate-400`}
                                         />
                                         {formErrors.end_date && <p className="mt-1 text-xs text-rose-600">{formErrors.end_date}</p>}
                                     </div>
@@ -1050,7 +1012,7 @@ export default function ShiftsPage() {
                                         value={formData.note}
                                         onChange={(e) => setFormData({ ...formData, note: e.target.value })}
                                         rows={3}
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-teal-500 resize-none"
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-slate-400 resize-none"
                                         placeholder="Additional notes..."
                                     />
                                 </div>
@@ -1067,7 +1029,7 @@ export default function ShiftsPage() {
                                     <button
                                         type="submit"
                                         disabled={isSubmitting}
-                                        className="flex-1 px-6 py-3 bg-gradient-to-r from-teal-500 to-cyan-500 text-white font-semibold rounded-xl flex items-center justify-center gap-2 disabled:opacity-50"
+                                        className="flex-1 px-6 py-3 bg-slate-800 hover:bg-slate-700 text-white font-semibold rounded-xl flex items-center justify-center gap-2 disabled:opacity-50"
                                     >
                                         {isSubmitting ? (
                                             <><Loader2 className="animate-spin" size={18} /> Saving...</>
@@ -1119,6 +1081,6 @@ export default function ShiftsPage() {
                     </div>
                 )}
             </AnimatePresence>
-        </div>
+        </AppLayout>
     );
 }

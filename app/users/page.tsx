@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAppSelector } from '../../store/hooks';
+import AppLayout from '../../components/AppLayout';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL;
@@ -61,7 +62,7 @@ export default function UserManagementPage() {
     const [searchQuery, setSearchQuery] = useState('');
     const [toast, setToast] = useState<ToastData | null>(null);
 
-    const [isValidating, setIsValidating] = useState(true);
+
 
     const router = useRouter();
     const privileges = useAppSelector((state) => state.auth.privileges);
@@ -167,40 +168,7 @@ export default function UserManagementPage() {
         return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
     };
 
-    // Validate auth on mount
-    useEffect(() => {
-        const validateAuth = async () => {
-            try {
-                const token = localStorage.getItem('accessToken');
 
-                if (!token) {
-                    window.location.href = '/login';
-                    return;
-                }
-
-                const res = await fetch(`${API_URL}/auth/validate-token`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ token })
-                });
-
-                if (!res.ok) {
-                    localStorage.removeItem('accessToken');
-                    window.location.href = '/login';
-                    return;
-                }
-
-                setIsValidating(false);
-            } catch (err) {
-                console.error('Auth validation error:', err);
-                localStorage.removeItem('accessToken');
-                window.location.href = '/login';
-            }
-        };
-
-        validateAuth();
-        validateAuth();
-    }, []);
 
     // WebSocket Connection for Real-time Updates
     useEffect(() => {
@@ -427,32 +395,13 @@ export default function UserManagementPage() {
         user.email?.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
-    // Show loading while validating
-    if (isValidating) {
-        return (
-            <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-                <div className="flex flex-col items-center">
-                    <div className="relative">
-                        <div className="absolute inset-0 bg-teal-500/20 blur-3xl rounded-full" />
-                        <Loader2 className="w-16 h-16 text-teal-400 animate-spin relative z-10" strokeWidth={2} />
-                    </div>
-                    <h3 className="mt-6 text-xl font-bold text-white">Validating session...</h3>
-                    <p className="mt-2 text-sm text-slate-400">Please wait</p>
-                </div>
-            </div>
-        );
-    }
-
     return (
-        <div className="min-h-screen bg-slate-50">
+        <AppLayout>
             {/* Header */}
             <div className="bg-white border-b border-slate-200">
-                <div className="max-w-7xl mx-auto px-6 py-6">
+                <div className="px-6 py-6">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                            <div className="w-12 h-12 bg-gradient-to-br from-teal-400 to-cyan-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-teal-500/30">
-                                <Users size={24} strokeWidth={2.5} />
-                            </div>
                             <div>
                                 <h1 className="text-2xl font-bold text-slate-800">User Management</h1>
                                 <p className="text-sm text-slate-500">Manage system users and roles</p>
@@ -465,7 +414,7 @@ export default function UserManagementPage() {
                                     resetForm();
                                     setIsModalOpen(true);
                                 }}
-                                className="flex items-center gap-2 bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-400 hover:to-cyan-400 text-white px-5 py-3 rounded-xl font-semibold shadow-lg shadow-teal-500/25 transition-all hover:-translate-y-0.5"
+                                className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-5 py-3 rounded-xl font-semibold shadow-lg shadow-slate-800/25 transition-all hover:-translate-y-0.5"
                             >
                                 <Plus size={20} />
                                 Add User
@@ -485,7 +434,7 @@ export default function UserManagementPage() {
                             placeholder="Search users..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20"
+                            className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-300"
                         />
                     </div>
                 </div>
@@ -494,7 +443,7 @@ export default function UserManagementPage() {
                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                     {isLoading ? (
                         <div className="flex items-center justify-center py-20">
-                            <Loader2 className="animate-spin text-teal-500" size={40} />
+                            <Loader2 className="animate-spin text-slate-500" size={40} />
                         </div>
                     ) : filteredUsers.length === 0 ? (
                         <div className="text-center py-20">
@@ -545,7 +494,7 @@ export default function UserManagementPage() {
                                                         {/* Online Indicator */}
                                                         {formatTimeAgo(user.last_seen_at) === 'Online' ? (
                                                             <>
-                                                                <div className="w-2.5 h-2.5 rounded-full bg-teal-500 animate-pulse shadow-[0_0_8px_rgba(20,184,166,0.5)]" />
+                                                                <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
                                                                 <span className="text-xs font-bold text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full border border-teal-100">
                                                                     Online
                                                                 </span>
@@ -609,7 +558,7 @@ export default function UserManagementPage() {
                         >
                             <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
                                 <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                                    <div className="w-1 h-6 bg-teal-500 rounded-full" />
+                                    <div className="w-1 h-6 bg-slate-800 rounded-full" />
                                     {editingUser ? 'Edit User' : 'Add New User'}
                                 </h3>
                                 <button
@@ -639,7 +588,7 @@ export default function UserManagementPage() {
                                                 setFormData({ ...formData, full_name: e.target.value });
                                                 setFormErrors({ ...formErrors, full_name: '' });
                                             }}
-                                            className={`w-full pl-12 pr-4 py-3 bg-slate-50 border ${formErrors.full_name ? 'border-rose-500' : 'border-slate-200'} rounded-xl text-slate-800 focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20`}
+                                            className={`w-full pl-12 pr-4 py-3 bg-slate-50 border ${formErrors.full_name ? 'border-rose-500' : 'border-slate-200'} rounded-xl text-slate-800 focus:border-slate-400 focus:ring-2 focus:ring-slate-300`}
                                             placeholder="John Doe"
                                         />
                                     </div>
@@ -663,7 +612,7 @@ export default function UserManagementPage() {
                                                 setFormData({ ...formData, email: e.target.value });
                                                 setFormErrors({ ...formErrors, email: '' });
                                             }}
-                                            className={`w-full pl-12 pr-4 py-3 bg-slate-50 border ${formErrors.email ? 'border-rose-500' : 'border-slate-200'} rounded-xl text-slate-800 focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20`}
+                                            className={`w-full pl-12 pr-4 py-3 bg-slate-50 border ${formErrors.email ? 'border-rose-500' : 'border-slate-200'} rounded-xl text-slate-800 focus:border-slate-400 focus:ring-2 focus:ring-slate-300`}
                                             placeholder="john@example.com"
                                         />
                                     </div>
@@ -688,7 +637,7 @@ export default function UserManagementPage() {
                                                 setFormData({ ...formData, phone_number: formatted });
                                                 setFormErrors({ ...formErrors, phone_number: '' });
                                             }}
-                                            className={`w-full pl-12 pr-4 py-3 bg-slate-50 border ${formErrors.phone_number ? 'border-rose-500' : 'border-slate-200'} rounded-xl text-slate-800 focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20`}
+                                            className={`w-full pl-12 pr-4 py-3 bg-slate-50 border ${formErrors.phone_number ? 'border-rose-500' : 'border-slate-200'} rounded-xl text-slate-800 focus:border-slate-400 focus:ring-2 focus:ring-slate-300`}
                                             placeholder="+62 812 3456 7890"
                                         />
                                     </div>
@@ -712,7 +661,7 @@ export default function UserManagementPage() {
                                                     setFormData({ ...formData, role_id: Number(e.target.value) });
                                                     setFormErrors({ ...formErrors, role_id: '' });
                                                 }}
-                                                className={`w-full pl-12 pr-4 py-3 bg-slate-50 border ${formErrors.role_id ? 'border-rose-500' : 'border-slate-200'} rounded-xl text-slate-800 focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 appearance-none`}
+                                                className={`w-full pl-12 pr-4 py-3 bg-slate-50 border ${formErrors.role_id ? 'border-rose-500' : 'border-slate-200'} rounded-xl text-slate-800 focus:border-slate-400 focus:ring-2 focus:ring-slate-300 appearance-none`}
                                             >
                                                 <option value="">Select Role</option>
                                                 {roles.map(role => (
@@ -736,7 +685,7 @@ export default function UserManagementPage() {
                                                 type="date"
                                                 value={formData.birth_date}
                                                 onChange={(e) => setFormData({ ...formData, birth_date: e.target.value })}
-                                                className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20"
+                                                className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:border-slate-400 focus:ring-2 focus:ring-slate-300"
                                             />
                                         </div>
                                     </div>
@@ -756,7 +705,7 @@ export default function UserManagementPage() {
                                                 setFormData({ ...formData, password: e.target.value });
                                                 setFormErrors({ ...formErrors, password: '' });
                                             }}
-                                            className={`w-full px-4 py-3 bg-slate-50 border ${formErrors.password ? 'border-rose-500' : 'border-slate-200'} rounded-xl text-slate-800 focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20`}
+                                            className={`w-full px-4 py-3 bg-slate-50 border ${formErrors.password ? 'border-rose-500' : 'border-slate-200'} rounded-xl text-slate-800 focus:border-slate-400 focus:ring-2 focus:ring-slate-300`}
                                             placeholder="••••••••"
                                         />
                                         {formErrors.password && (
@@ -774,7 +723,7 @@ export default function UserManagementPage() {
                                             type="password"
                                             value={formData.password}
                                             onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20"
+                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:border-slate-400 focus:ring-2 focus:ring-slate-300"
                                             placeholder="••••••••"
                                         />
                                     </div>
@@ -795,7 +744,7 @@ export default function UserManagementPage() {
                                     <button
                                         type="submit"
                                         disabled={isSubmitting}
-                                        className="flex-1 px-6 py-3 bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-400 hover:to-cyan-400 text-white font-semibold rounded-xl transition-all shadow-lg shadow-teal-500/25 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                        className="flex-1 px-6 py-3 bg-slate-800 hover:bg-slate-700 text-white font-semibold rounded-xl transition-all shadow-lg shadow-slate-800/25 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                                     >
                                         {isSubmitting ? (
                                             <>
@@ -869,7 +818,7 @@ export default function UserManagementPage() {
                         exit={{ opacity: 0, scale: 0.9, y: 20 }}
                         className="fixed bottom-6 right-6 z-50 flex items-center gap-4 bg-slate-800 text-white px-6 py-4 rounded-xl shadow-2xl border border-slate-700/50"
                     >
-                        <div className={`p-2 rounded-full ${toast.type === 'success' ? 'bg-teal-500/20 text-teal-400' : 'bg-rose-500/20 text-rose-400'}`}>
+                        <div className={`p-2 rounded-full ${toast.type === 'success' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
                             {toast.type === 'success' ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />}
                         </div>
                         <div>
@@ -885,6 +834,6 @@ export default function UserManagementPage() {
                     </motion.div>
                 )}
             </AnimatePresence>
-        </div >
+        </AppLayout >
     );
 }
