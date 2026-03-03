@@ -74,7 +74,6 @@ const Sidebar: React.FC<SidebarProps> = ({ user, privileges, isMobileMenuOpen, o
                 fixed md:static inset-y-0 left-0 z-50 w-72 bg-[#CAF0F8] flex flex-col transition-transform duration-300 ease-in-out
                 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
             `}>
-                {/* Logo */}
                 <div className="p-8">
                     <div className="flex items-center gap-3 mb-10">
                         <div>
@@ -83,7 +82,6 @@ const Sidebar: React.FC<SidebarProps> = ({ user, privileges, isMobileMenuOpen, o
                         </div>
                     </div>
 
-                    {/* Navigation */}
                     <nav className="space-y-2">
                         {navItems
                             .filter(item => item.permission === null || hasPrivilege(item.permission))
@@ -111,7 +109,6 @@ const Sidebar: React.FC<SidebarProps> = ({ user, privileges, isMobileMenuOpen, o
                     </nav>
                 </div>
 
-                {/* User Profile & Logout */}
                 <div className="mt-auto p-6 m-4 bg-white/40 backdrop-blur-sm rounded-2xl">
                     <div className="flex items-center gap-3 mb-4">
                         <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-slate-700 font-bold shadow-sm">
