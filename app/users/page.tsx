@@ -22,6 +22,7 @@ import {
 import { useRouter } from 'next/navigation';
 import { useAppSelector } from '../../store/hooks';
 import AppLayout from '../../components/AppLayout';
+import CustomSelect from '../../components/CustomSelect';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL;
@@ -653,21 +654,17 @@ export default function UserManagementPage() {
                                             Role <span className="text-rose-500">*</span>
                                         </label>
                                         <div className="relative">
-                                            <Shield className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                                            <select
-                                                required
+                                            <CustomSelect
                                                 value={formData.role_id || ''}
-                                                onChange={(e) => {
-                                                    setFormData({ ...formData, role_id: Number(e.target.value) });
+                                                onChange={(val) => {
+                                                    setFormData({ ...formData, role_id: Number(val) });
                                                     setFormErrors({ ...formErrors, role_id: '' });
                                                 }}
-                                                className={`w-full pl-12 pr-4 py-3 bg-slate-50 border ${formErrors.role_id ? 'border-rose-500' : 'border-slate-200'} rounded-xl text-slate-800 focus:border-slate-400 focus:ring-2 focus:ring-slate-300 appearance-none`}
-                                            >
-                                                <option value="">Select Role</option>
-                                                {roles.map(role => (
-                                                    <option key={role.id} value={role.id}>{role.name}</option>
-                                                ))}
-                                            </select>
+                                                placeholder="Select Role"
+                                                icon={<Shield size={20} />}
+                                                error={!!formErrors.role_id}
+                                                options={roles.map(role => ({ value: role.id, label: role.name }))}
+                                            />
                                         </div>
                                         {formErrors.role_id && (
                                             <p className="mt-1 text-xs text-rose-600">{formErrors.role_id}</p>

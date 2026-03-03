@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { useAppSelector } from '../../store/hooks';
 import AppLayout from '../../components/AppLayout';
+import CustomSelect from '../../components/CustomSelect';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL;
@@ -898,21 +899,20 @@ export default function ShiftsPage() {
                                         Assign to User <span className="text-rose-500">*</span>
                                     </label>
                                     <div className="relative">
-                                        <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                                        <select
+                                        <CustomSelect
                                             value={formData.user_id}
-                                            onChange={(e) => {
-                                                setFormData({ ...formData, user_id: e.target.value });
+                                            onChange={(val) => {
+                                                setFormData({ ...formData, user_id: String(val) });
                                                 setFormErrors({ ...formErrors, user_id: '' });
                                             }}
-                                            className={`w-full pl-11 pr-4 py-3 bg-slate-50 border rounded-xl appearance-none ${formErrors.user_id ? 'border-rose-500' : 'border-slate-200'
-                                                } focus:outline-none focus:border-slate-400`}
-                                        >
-                                            <option value="">Select user...</option>
-                                            {users.map(u => (
-                                                <option key={u.id} value={u.id}>{u.full_name} ({u.email})</option>
-                                            ))}
-                                        </select>
+                                            placeholder="Select user..."
+                                            icon={<User size={18} />}
+                                            error={!!formErrors.user_id}
+                                            options={users.map(u => ({
+                                                value: u.id,
+                                                label: `${u.full_name} (${u.email})`
+                                            }))}
+                                        />
                                     </div>
                                     {formErrors.user_id && <p className="mt-1 text-xs text-rose-600">{formErrors.user_id}</p>}
                                 </div>

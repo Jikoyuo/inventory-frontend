@@ -16,6 +16,7 @@ import { useAppSelector } from '../../store/hooks';
 import AppLayout from '../../components/AppLayout';
 import Modal from '../../components/Modal';
 import Toast from '../../components/Toast';
+import CustomSelect from '../../components/CustomSelect';
 
 // --- TYPE DEFINITIONS ---
 interface Product {
@@ -312,17 +313,15 @@ export default function TransactionsPage() {
                 <form onSubmit={handleTxSubmit} className="space-y-5">
                     <div>
                         <label className="block text-sm font-semibold text-slate-700 mb-2">Select Product</label>
-                        <select
-                            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-300 focus:border-slate-400 outline-none transition-all"
+                        <CustomSelect
                             value={txForm.product_id}
-                            onChange={(e) => setTxForm({ ...txForm, product_id: e.target.value })}
-                            required
-                        >
-                            <option value="">-- Choose Item --</option>
-                            {products.map(p => (
-                                <option key={p.id} value={p.id}>{p.name} (Stock: {p.stock})</option>
-                            ))}
-                        </select>
+                            onChange={(val) => setTxForm({ ...txForm, product_id: String(val) })}
+                            placeholder="-- Choose Item --"
+                            options={products.map(p => ({
+                                value: p.id,
+                                label: `${p.name} (Stock: ${p.stock})`
+                            }))}
+                        />
                     </div>
                     <div className="grid grid-cols-2 gap-5">
                         <div>

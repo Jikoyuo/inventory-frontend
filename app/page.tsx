@@ -13,8 +13,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAppSelector } from '../store/hooks';
 import AppLayout from '../components/AppLayout';
 import StatCard from '../components/StatCard';
+import CustomSelect from '../components/CustomSelect';
 
-// --- TYPE DEFINITIONS ---
 interface DashboardStats {
   total_products: number;
   low_stock_count: number;
@@ -155,15 +155,18 @@ export default function DashboardPage() {
                 <Box size={18} className="text-slate-500" />
                 Stock Movement
               </h3>
-              <select
-                value={selectedPeriod}
-                onChange={(e) => setSelectedPeriod(Number(e.target.value))}
-                className="bg-white text-xs font-bold text-slate-600 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[#90e0ef]/40 border border-slate-200"
-              >
-                <option value={7}>Last 7 Days</option>
-                <option value={30}>Last 30 Days</option>
-                <option value={90}>Last 3 Months</option>
-              </select>
+              <div className="w-40">
+                <CustomSelect
+                  value={selectedPeriod}
+                  onChange={(val) => setSelectedPeriod(Number(val))}
+                  options={[
+                    { value: 7, label: 'Last 7 Days' },
+                    { value: 30, label: 'Last 30 Days' },
+                    { value: 90, label: 'Last 3 Months' }
+                  ]}
+                  className="bg-white py-2 text-xs font-bold text-slate-600 border-slate-200 focus:ring-[#90e0ef]/40"
+                />
+              </div>
             </div>
 
             <div className="h-64 flex items-end gap-1 md:gap-2">
