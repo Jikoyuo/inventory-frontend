@@ -31,7 +31,6 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle, headerAction
     const privileges = useAppSelector((state) => state.auth.privileges);
     const accessToken = useAppSelector((state) => state.auth.accessToken);
 
-    // Only show loading spinner if there's no token in Redux yet (first load / page refresh)
     const [isValidating, setIsValidating] = useState(!accessToken);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -164,7 +163,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle, headerAction
                     onCloseMobileMenu={() => setIsMobileMenuOpen(false)}
                 />
 
-                <main className="flex-1 flex flex-col overflow-hidden relative bg-white rounded-tl-3xl shadow-xl">
+                <main className="flex-1 flex flex-col overflow-hidden relative bg-white rounded-tl-3xl rounded-bl-3xl max-h-[98vh] mt-[0.5%]">
                     <header className="sticky top-0 z-30 px-6 md:px-8 py-5 flex justify-between items-center">
                         <div className="flex items-center gap-4">
                             <button

@@ -94,7 +94,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user, privileges, isMobileMenuOpen, o
                                         className={`
                                             w-full flex items-center justify-between px-4 py-3.5 rounded-xl text-sm font-medium transition-all duration-200 group
                                             ${active
-                                                ? 'bg-white text-slate-800 shadow-md shadow-black/5'
+                                                ? 'bg-red-800 text-slate-800 shadow-md shadow-black/5'
                                                 : 'text-slate-700 hover:bg-white/50'}
                                         `}
                                     >

@@ -89,13 +89,11 @@ export default function LoginPage() {
                 }
             }));
 
-            // Store token in localStorage as backup
             localStorage.setItem('accessToken', token);
 
             setSuccess('Login successful!');
             setLoadingStep('Redirecting to dashboard...');
 
-            // Redirect to dashboard
             setTimeout(() => {
                 window.location.href = '/';
             }, 800);
@@ -123,10 +121,13 @@ export default function LoginPage() {
     return (
         <div className="min-h-screen bg-[#f8f9fa] flex flex-row p-0 relative">
             <div className="relative flex min-h-screen min-w-[50vw] bg-[#90e0ef] items-center justify-center" >
-                <div className="flex flex-col items-center justify-center mt-[-30%] max-w-[70%] gap-4">
+                <div className="flex flex-col items-center justify-center max-w-[70%] gap-4">
                     <h1 className="text-5xl font-bold text-white">Manage Your Assets and Track Your Transaction</h1>
                     <p className="text-white">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</p>
                 </div>
+                {/* <div className='absolute top-3 left-10 w-[6%] h-[6%] bg-[#f8f9fa] rotate-60'></div>
+                <div className='absolute top-10 left-15 w-[6%] h-[6%] bg-[#f8f9fa] rotate-80'></div> */}
+
                 <div className='absolute bottom-0 right-0 w-[10%] h-[10%] bg-[#f8f9fa] rounded-br-[-10vw]'></div>
                 <div className='absolute bottom-0 right-0 w-[10%] h-[10%] bg-[#90e0ef] rounded-br-[10vw]'></div>
             </div>

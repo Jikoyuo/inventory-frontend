@@ -111,7 +111,6 @@ export default function DashboardPage() {
   return (
     <AppLayout pageTitle="Dashboard Overview">
       <div className="p-4 md:p-8 space-y-8 max-w-7xl mx-auto">
-        {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <StatCard
             title="Total Products"
@@ -132,7 +131,7 @@ export default function DashboardPage() {
             color="peach"
           />
           <StatCard
-            title="Total Valuation"
+            title="Nilai Valuasi"
             value={`Rp ${(dashboardStats?.total_valuation || 0).toLocaleString('id-ID')}`}
             icon={TrendingUp}
             trend="+5.4%"
@@ -199,7 +198,6 @@ export default function DashboardPage() {
             </div>
           </motion.div>
 
-          {/* Finance Summary Section */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -208,7 +206,7 @@ export default function DashboardPage() {
           >
             <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2">
               <DollarSign size={18} className="text-slate-500" />
-              Finance Summary
+              Ringkasan Keuangan
             </h3>
 
             <div className="space-y-4">
